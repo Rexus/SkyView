@@ -1,169 +1,150 @@
 # SkyView
 
-Repository: <https://example.com/your-org/skyview>
+**Visual systems modeling, grounded in SysML source.**
 
-A modern SysML v2 workbench: a Go server with a React UI that reads and writes
-`.sysml` textual models directly, shows them as an editable grid, auto-laid-out
-interconnection/containment diagrams, a requirements table with traceability,
-and a syntax-highlighted source editor.
+SkyView is a browser-based SysML v2 workbench with a Go backend and a React interface.
+Explore and edit systems through diagrams, tables, requirements and source code, with models
+stored as plain `.sysml` files.
 
-The source file stays the single source of truth. Every structured edit is
-applied as a precise source edit and re-parsed, so the model round-trips without
-rewriting the whole file.
+SkyView is experimental and implements a subset of SysML v2. OMG conformance has not been established.
+See the [initial baseline record](docs/baseline.md) for its origin, verification and known limits.
+
+**Contents:** [Features](#features) · [Quick start](#quick-start) · [Development](#development) ·
+[Language support](#language-support) · [Project layout](#project-layout) · [Origins](#origins)
 
 ## Features
 
-- **Grid editor** — every element in the model in one editable table. Edit
-  names, types, values and documentation inline. Add/delete elements,
-  connections and satisfy links.
-- **Diagram view** — auto-laid-out interconnection and containment diagrams with
-  React Flow. Nodes carry SysON-style compartments for documentation and
-  inherited attributes, plus ports inherited from a part's type. Drag a port
-  handle onto another port to create a connection, drag nodes to arrange, and
-  the layout is persisted per scope.
-- **Diagram notes** — add a note from the diagram toolbar; it is attached to the
-  selected node with a dashed leader line, can be dragged and edited inline, and
-  is stored in the diagram layout alongside node positions.
-- **Requirements view** — requirements with their text, satisfy links and a
-  traceability matrix. Edit requirement text and add trace links.
-- **Source view** — CodeMirror 6 editor with SysML syntax highlighting, live
-  diagnostics, line jump and save.
-- **Import** — drag `.sysml` files from your desktop onto the app, or use the
-  import dialog. Names are sanitized to workspace rules and conflicts can be
-  renamed before import.
-- **Undo / redo** — `⌘Z` / `⇧⌘Z` (`Ctrl+Z` / `Ctrl+Y` on Linux) for visual model
-  edits, with the same behaviour as the rest of the UI.
-- **Version history** — a snapshot is written before every save and can be
-  restored from the History dialog.
-- **Diagnostics** — tolerant parser plus semantic checks (unresolved types,
-  connection endpoints, satisfy targets, duplicate names).
-- **Modern UX** — dark/light themes, command palette (`⌘K`), keyboard
-  navigation, responsive layout.
+- **Visual modeling:** interconnection and containment diagrams, automatic layout, port connections,
+  saved node positions and diagram notes.
+- **Grid editing:** edit element names, types, values and documentation; add or remove elements.
+- **Requirements:** browse requirement text, add satisfaction links and inspect a traceability matrix.
+- **Source editing:** syntax highlighting, parser diagnostics and direct access to the model text.
+- **File workflows:** import and download `.sysml` files, undo and redo visual model edits,
+  and restore saved model snapshots.
+- **Workspace UI:** model navigation, a command palette, and light and dark themes.
+
+Structured edits modify the source text and reparse the model. Diagram positions and notes are stored
+separately. Reliable preservation of arbitrary SysML models across edits remains to be verified.
 
 ## Quick start
 
-```sh
-cd skyview
-nix develop
-```
-
-In two terminals:
+Install Go 1.24 or later. From the repository root, run:
 
 ```sh
-make dev-api        # Go API + built UI on http://localhost:8080
-make dev-web        # Vite dev server on http://localhost:5173 (proxies /api)
+go run ./cmd/skyview -addr 127.0.0.1:8081
 ```
 
-Or build the single binary:
+Open [SkyView](http://127.0.0.1:8081) and select `example-model.sysml` to explore the bundled example.
+The repository includes a built web interface, so this first run does not require Node.js or Nix.
+Port 8081 lets SkyView run alongside SysON on 8080. See the [local run guide](docs/local-development.md)
+for standalone executables, Docker, Podman, persistent storage and backups.
+
+For Docker, from the repository root:
 
 ```sh
-make build
-./bin/skyview
+docker build -t skyview:local .
+docker run -d --name skyview -p 127.0.0.1:8081:8080 -v skyview-workspace:/data skyview:local
 ```
 
-The default workspace is `./workspace`; it is seeded with
-`example-model.sysml` if no model is present. Set `SKYVIEW_WORKSPACE` or pass
-`-workspace` to use another directory. `SKYVIEW_ADDR` / `-addr` changes the
-listen address (default `0.0.0.0:8080`).
+For native runs, models are stored in `./workspace`; Docker uses the `skyview-workspace` named volume. An example is created when the workspace contains no `.sysml` files.
+History and diagram layouts are stored in `workspace/.skyview/` and are ignored by Git.
+Back up the whole workspace to retain both model files and presentation data.
 
-## Layout
+| Setting | Command-line flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Workspace directory | `-workspace` | `SKYVIEW_WORKSPACE` | `./workspace` |
+| Listen address | `-addr` | `SKYVIEW_ADDR` | `0.0.0.0:8080` |
 
-```text
-cmd/skyview/          entry point
-internal/sysml/       lexer, parser, model, semantic checks, source edits
-internal/server/      HTTP API, file/history/layout storage, embedded UI
-web/                  React + TypeScript + Vite frontend
-kubernetes/           namespace, PVC, deployment, service, Traefik ingress
-skaffold.yaml         build + deploy to a Kubernetes cluster
-workspace/            default model workspace (sample SysML model)
-```
-
-## SysML coverage
-
-The parser handles the subset used by the example model and common SysML v2
-textual notation:
-
-- packages, imports and `doc` comments
-- `part`, `port`, `attribute`, `requirement`, `action`, `state`, `item`,
-  `interface`, `allocation`, `constraint`, `calc`, `case`, `analysis`,
-  `verification`, `view`, `rendering`, `concern` definitions and usages
-- `specializes`, types, multiplicities and feature values
-- `connection ... connect ... to ...`
-- `satisfy ... by ...`
-- tolerant parsing: unknown constructs produce diagnostics instead of losing the
-  rest of the file
-
-It is intentionally a practical workbench parser, not a complete SysML v2
-semantic implementation.
-
-## Kubernetes
-
-`kubernetes/` deploys the app behind Traefik:
-
-- namespace `skyview`
-- `skyview-workspace` PVC (5 GiB, `rook-ceph-block`)
-- one replica, distroless non-root image, `/data` mounted
-- service on port 80
-- ingress at **`skyview.example.com`** with TLS from the `example-ca`
-  ClusterIssuer
-
-Build and deploy with Skaffold:
-
-```sh
-make deploy            # or: make deploy-dev
-```
-
-`make deploy` reads the Harbor admin password from the in-cluster
-`harbor/harbor-core` secret when `HARBOR_PASSWORD` is not set. To run Skaffold
-directly:
-
-```sh
-HARBOR_USER=admin HARBOR_PASSWORD=... \
-  skaffold run --cache-artifacts=false --insecure-registry=registry.example.com
-```
-
-The image is pushed to `registry.example.com/library/skyview`. The custom
-build script (`scripts/build-image.sh`) uses Skopeo for the push because the
-build host's Docker daemon does not trust the registry's self-signed CA; the
-`--insecure-registry` flag does the same for Skaffold's digest lookup.
-
-The app is served at **https://skyview.example.com**. Point DNS:
-`skyview.example.com -> <load-balancer-IP>`. TLS is issued by cert-manager
-from the `example-ca` ClusterIssuer.
-
-## API
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/files` | list workspace models |
-| POST | `/api/files` | create a model (or import content) |
-| GET | `/api/files/{name}` | raw source + parsed model + diagnostics |
-| PUT | `/api/files/{name}` | save raw source |
-| DELETE | `/api/files/{name}` | delete a model |
-| POST | `/api/files/{name}/element` | add an element |
-| PATCH | `/api/files/{name}/element` | edit name/type/doc/value |
-| DELETE | `/api/files/{name}/element?id=` | delete an element |
-| POST | `/api/files/{name}/connection` | add a connection |
-| POST | `/api/files/{name}/satisfy` | add a satisfy link |
-| GET/PUT | `/api/files/{name}/layout` | diagram layout |
-| GET | `/api/files/{name}/history` | snapshots |
-| POST | `/api/files/{name}/restore` | restore a snapshot |
-| POST | `/api/files/{name}/validate` | parse diagnostics |
+Command-line flags override environment variables. The quick-start command binds to localhost;
+the default address listens on all interfaces. The application has no built-in authentication.
 
 ## Development
 
+To rebuild the interface, use Node.js 22 and npm in addition to Go. From the repository root:
+
 ```sh
-make test     # Go parser and edit tests
-make vet
-make fmt
+npm --prefix web ci
+npm --prefix web run build
 ```
 
-The Go tests cover the example model, structured edits and
-connection/satisfy resolution.
+The frontend build writes to `internal/server/dist/`, which Go embeds in the application.
+Restart the Go server after rebuilding to serve the updated interface.
 
-## Notes
+For live frontend development, start the Go server with `-addr 127.0.0.1:8080` and start a second terminal
+at the repository root:
 
-- The sample model is a small fictional SysML v2 example used to exercise the
-  UI and parser. Update `workspace/example-model.sysml` as needed.
-- Workspace history and layouts live in `workspace/.skyview/` and are ignored by
-  git.
+```sh
+npm --prefix web run dev -- --host 127.0.0.1
+```
+
+Open [the development interface](http://127.0.0.1:5173). Its API requests are forwarded to the Go server.
+
+Run the existing Go checks from the repository root:
+
+```sh
+go test ./...
+go vet ./...
+```
+
+The tests exercise the bundled example, selected source edits, connection and satisfaction-link
+resolution, and incomplete input. They are not a SysML conformance suite.
+
+To build a standalone executable after building the interface, use
+`go build -o bin/skyview.exe ./cmd/skyview` on Windows or
+`go build -o bin/skyview ./cmd/skyview` on Linux and macOS.
+
+A Nix development environment is also provided in [flake.nix](flake.nix). On a host with Nix flakes
+enabled, run `nix develop`, install the frontend dependencies with `npm --prefix web ci`,
+then use `make build`, `make dev-api`, `make dev-web`, `make test` or `make vet`.
+
+Container and cluster configuration is included. The [Kubernetes guide](kubernetes/README.md)
+describes the existing Traefik, cert-manager, storage and registry setup; adapt its example values
+and environment assumptions before deploying.
+
+## Language support
+
+The custom Go parser supports selected declarations, types, values, documentation, connections and
+satisfaction links. Its diagnostics cover some unresolved references and duplicate names.
+
+Known boundaries include:
+
+- Import statements are recorded, but external model files and standard libraries are not loaded
+  through those imports.
+- Some constructs, including `view`, `rendering`, `concern`, `alias` and `metadata`, are skipped
+  by the structured parser.
+- Successful parsing or display does not establish full language validity or semantic correctness.
+- Satisfaction links express model relationships; their presence does not establish that a
+  requirement has passed verification.
+
+Conformance work should be assessed against the OMG SysML 2.0 and KerML 1.0 specifications [1][2].
+The [HTTP API](docs/api.md) is specific to SkyView; conformance to the separate OMG Systems Modeling
+API and Services specification has not been established [3].
+
+## Project layout
+
+| Path | Responsibility |
+| --- | --- |
+| `cmd/skyview/` | Application entry point |
+| `internal/sysml/` | Lexer, parser, model representation, diagnostics and source edits |
+| `internal/server/` | HTTP API, workspace storage, history and embedded interface |
+| `web/` | React, TypeScript and Vite frontend |
+| `workspace/` | Default model workspace and bundled example |
+| `kubernetes/` | Cluster deployment configuration and guide |
+| `scripts/` | Container image build tooling |
+
+## Origins
+
+SkyView began as an experiment created by Carl Maier with assistance from a locally hosted language model,
+inspired by a demonstration of SysON. Its continued development aims to combine approachable visual
+modeling with dependable SysML v2 support.
+
+## License
+
+[MIT](LICENSE), copyright (c) 2026 Carl Maier and Viktor Ingre.
+Bundled dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+## References
+
+1. OMG, [SysML 2.0](https://www.omg.org/spec/SysML/2.0).
+2. OMG, [KerML 1.0](https://www.omg.org/spec/KerML/1.0).
+3. OMG, [Systems Modeling API and Services 1.0](https://www.omg.org/spec/SystemsModelingAPI/1.0).

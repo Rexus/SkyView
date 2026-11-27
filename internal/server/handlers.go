@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"example.com/skyview/internal/sysml"
+	"github.com/Rexus/SkyView/internal/sysml"
 )
 
 // FileResponse is the complete document state returned to the client.

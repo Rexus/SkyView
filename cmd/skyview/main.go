@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"example.com/skyview/internal/server"
+	"github.com/Rexus/SkyView/internal/server"
 )
 
 func main() {
