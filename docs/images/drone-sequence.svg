@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="576" viewBox="0 0 960 576" role="img" aria-labelledby="title description">
+<title id="title">Inspection mission message sequence</title>
+<desc id="description">Generated from the native nominalSequence: ordered message exchanges between the ground station, flight controller and camera.</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="#397366" stroke-width="1.5"/></marker></defs>
+<rect width="960" height="576" rx="12" fill="#f8fafc"/>
+<g font-family="Segoe UI,Arial,sans-serif" fill="#1f2937">
+<text x="32" y="39" font-size="24" font-weight="600">Inspection mission · message sequence</text>
+<text x="32" y="65" font-size="14">Expected scenario · generated from SysML v2 · no execution evidence</text>
+<rect x="45" y="95" width="230" height="48" rx="7" fill="#eef2f6" stroke="#64748b"/>
+<text x="160" y="125" font-size="17" text-anchor="middle">station</text>
+<path d="M160,143 V511" stroke="#64748b" stroke-dasharray="5 5"/>
+<rect x="365" y="95" width="230" height="48" rx="7" fill="#eef2f6" stroke="#64748b"/>
+<text x="480" y="125" font-size="17" text-anchor="middle">controller</text>
+<path d="M480,143 V511" stroke="#64748b" stroke-dasharray="5 5"/>
+<rect x="685" y="95" width="230" height="48" rx="7" fill="#eef2f6" stroke="#64748b"/>
+<text x="800" y="125" font-size="17" text-anchor="middle">camera</text>
+<path d="M800,143 V511" stroke="#64748b" stroke-dasharray="5 5"/>
+<g data-model="InspectionDrone::Mission::nominalSequence::upload"><title>InspectionDrone::Mission::nominalSequence::upload</title>
+<text x="320.0" y="178" text-anchor="middle" font-size="14">1. upload : MissionPlan</text>
+<path d="M160,190 H480" fill="none" stroke="#397366" stroke-width="2" marker-end="url(#arrow)"/></g>
+<g data-model="InspectionDrone::Mission::nominalSequence::ready"><title>InspectionDrone::Mission::nominalSequence::ready</title>
+<text x="320.0" y="234" text-anchor="middle" font-size="14">2. ready : Telemetry</text>
+<path d="M480,246 H160" fill="none" stroke="#397366" stroke-width="2" marker-end="url(#arrow)"/></g>
+<g data-model="InspectionDrone::Mission::nominalSequence::startMission"><title>InspectionDrone::Mission::nominalSequence::startMission</title>
+<text x="320.0" y="290" text-anchor="middle" font-size="14">3. startMission : FlightCommand</text>
+<path d="M160,302 H480" fill="none" stroke="#397366" stroke-width="2" marker-end="url(#arrow)"/></g>
+<g data-model="InspectionDrone::Mission::nominalSequence::capture"><title>InspectionDrone::Mission::nominalSequence::capture</title>
+<text x="640.0" y="346" text-anchor="middle" font-size="14">4. capture : CameraCommand</text>
+<path d="M480,358 H800" fill="none" stroke="#397366" stroke-width="2" marker-end="url(#arrow)"/></g>
+<g data-model="InspectionDrone::Mission::nominalSequence::imageSaved"><title>InspectionDrone::Mission::nominalSequence::imageSaved</title>
+<text x="640.0" y="402" text-anchor="middle" font-size="14">5. imageSaved : ImageRecord</text>
+<path d="M800,414 H480" fill="none" stroke="#397366" stroke-width="2" marker-end="url(#arrow)"/></g>
+<g data-model="InspectionDrone::Mission::nominalSequence::completed"><title>InspectionDrone::Mission::nominalSequence::completed</title>
+<text x="320.0" y="458" text-anchor="middle" font-size="14">6. completed : Telemetry</text>
+<path d="M480,470 H160" fill="none" stroke="#397366" stroke-width="2" marker-end="url(#arrow)"/></g>
+<text x="32" y="548" font-size="12">InspectionDrone::Mission::nominalSequence · schematic notation, not a SkyView screenshot</text>
+</g></svg>

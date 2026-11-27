@@ -29,6 +29,8 @@ type parser struct {
 	pendingDoc     string
 	pendingDocSpan Span
 	pendingDocDecl Span
+	previous       map[string]endpoint
+	imports        []scopedImport
 }
 
 // Parse parses a SysML v2 textual file. It is intentionally tolerant so that
@@ -38,6 +40,7 @@ func Parse(src string) *Model {
 		src:      src,
 		toks:     Lex(src),
 		idCounts: map[string]int{},
+		previous: map[string]endpoint{},
 		model: &Model{
 			RootID:      "root",
 			RootName:    "root",
@@ -58,6 +61,11 @@ func Parse(src string) *Model {
 		Spans: Spans{BodyOpen: -1, BodyClose: -1},
 	}
 	p.add(root)
+	for _, t := range p.toks {
+		if t.Error != "" {
+			p.diag(SeverityError, t.Error, t, "")
+		}
+	}
 	p.parseMembers(root.ID, false)
 	p.semantic()
 	return p.model
@@ -82,7 +90,7 @@ func (p *parser) next() Token {
 }
 
 func (p *parser) accept(text string) bool {
-	if p.cur().Text == text {
+	if !p.cur().Quoted && p.cur().Text == text {
 		p.next()
 		return true
 	}
@@ -100,7 +108,7 @@ func (p *parser) acceptKind(kind TokenKind, text string) bool {
 
 func (p *parser) isIdent(text string) bool {
 	t := p.cur()
-	return t.Kind == TokIdent && t.Text == text
+	return t.Kind == TokIdent && !t.Quoted && t.Text == text
 }
 
 func (p *parser) diag(severity, msg string, tok Token, elementID string) {
@@ -166,7 +174,7 @@ func (p *parser) parseMembers(parentID string, expectBrace bool) {
 		if t.Kind == TokIdent && (t.Text == "import" || t.Text == "private" || t.Text == "public" || t.Text == "protected") {
 			// Imports may be preceded by visibility modifiers.
 			if t.Text == "import" || p.peek(1).Text == "import" {
-				p.parseImport()
+				p.parseImport(parentID)
 				continue
 			}
 		}
@@ -175,7 +183,9 @@ func (p *parser) parseMembers(parentID string, expectBrace bool) {
 			continue
 		}
 		iterStart := p.pos
+		firstElement := len(p.model.Elements)
 		p.parseDeclaration(parentID)
+		p.rememberPrevious(parentID, firstElement)
 		if p.pos == iterStart {
 			// Defensive: never spin on an unknown token.
 			p.next()
@@ -208,7 +218,7 @@ func (p *parser) parseDoc(parentID string) {
 	p.pendingDocDecl = decl
 }
 
-func (p *parser) parseImport() {
+func (p *parser) parseImport(parentID string) {
 	start := p.pos
 	for {
 		t := p.cur()
@@ -221,6 +231,7 @@ func (p *parser) parseImport() {
 	if end > start {
 		raw := strings.TrimSpace(p.src[p.toks[start].Start:p.toks[end-1].End])
 		p.model.Imports = append(p.model.Imports, raw)
+		p.recordImport(parentID, p.toks[start:end])
 	}
 	if p.cur().Text == ";" {
 		p.next()
@@ -283,8 +294,40 @@ func (p *parser) parseDeclaration(parentID string) {
 
 	keyword := p.cur().Text
 	switch keyword {
+	case "first", "then":
+		p.parseOrdering(parentID, startTok)
+		return
+	case "message":
+		p.next()
+		p.parseMessage(parentID, startTok)
+		return
+	case "verify":
+		p.next()
+		p.parseVerify(parentID, startTok)
+		return
+	case "require", "assume":
+		p.next()
+		if !p.accept("constraint") {
+			p.unsupported(startTok, "only inline constraint usages are projected")
+			p.diag(SeverityWarning, "Expected a supported inline constraint", p.cur(), parentID)
+			p.skipDeclaration()
+			return
+		}
+		index := len(p.model.Elements)
+		p.parseNamed(parentID, startTok, "constraint", direction, pendingDoc, pendingSpan, pendingDecl)
+		p.model.Elements[index].ConstraintRole = keyword
+		return
+	case "event":
+		p.next()
+		if !p.accept("occurrence") {
+			p.diag(SeverityError, "Expected 'occurrence' after 'event'", p.cur(), parentID)
+			p.skipDeclaration()
+			return
+		}
+		p.parseNamed(parentID, startTok, "event occurrence", direction, pendingDoc, pendingSpan, pendingDecl)
+		return
 	case "import":
-		p.parseImport()
+		p.parseImport(parentID)
 		return
 	case "package":
 		p.next() // package
@@ -298,16 +341,26 @@ func (p *parser) parseDeclaration(parentID string) {
 		p.next() // satisfy
 		p.parseSatisfy(parentID, startTok)
 		return
-	case "comment", "dependency", "alias", "metadata", "view", "rendering", "concern":
+	case "dependency":
+		p.next()
+		p.parseDependency(parentID, startTok)
+		return
+	case "comment", "alias", "metadata", "view", "rendering", "concern":
+		p.unsupported(startTok, "not yet projected by SkyView")
 		p.skipDeclaration()
 		return
 	}
 
 	p.next() // the declaration keyword
+	if (keyword == "use" || keyword == "verification" || keyword == "analysis") && p.isIdent("case") {
+		p.next()
+		keyword += " case"
+	}
 	p.parseNamed(parentID, startTok, keyword, direction, pendingDoc, pendingSpan, pendingDecl)
 }
 
 func (p *parser) parsePackage(parentID string, startTok Token, doc string, docSpan, docDecl Span) {
+	shortName := p.shortName()
 	name := ""
 	nameSpan := Span{}
 	if p.cur().Kind == TokIdent {
@@ -319,14 +372,15 @@ func (p *parser) parsePackage(parentID string, startTok Token, doc string, docSp
 	}
 
 	e := &Element{
-		ID:       "",
-		Name:     name,
-		Kind:     "package",
-		IsDef:    true,
-		ParentID: parentID,
-		Line:     startTok.Line,
-		Col:      startTok.Col,
-		Doc:      doc,
+		ID:        "",
+		Name:      name,
+		Kind:      "package",
+		ShortName: shortName,
+		IsDef:     true,
+		ParentID:  parentID,
+		Line:      startTok.Line,
+		Col:       startTok.Col,
+		Doc:       doc,
 		Spans: Spans{
 			Name:      nameSpan,
 			Doc:       docSpan,
@@ -362,6 +416,7 @@ func (p *parser) parseNamed(parentID string, startTok Token, kind, direction, do
 		p.next()
 		isDef = true
 	}
+	shortName := p.shortName()
 
 	name := ""
 	nameSpan := Span{}
@@ -375,6 +430,7 @@ func (p *parser) parseNamed(parentID string, startTok Token, kind, direction, do
 		ID:        "",
 		Name:      name,
 		Kind:      kind,
+		ShortName: shortName,
 		IsDef:     isDef,
 		ParentID:  parentID,
 		Line:      startTok.Line,
@@ -416,6 +472,7 @@ func (p *parser) parseNamed(parentID string, startTok Token, kind, direction, do
 			p.next()
 			typ, span := p.readPath()
 			e.Specializes = typ
+			e.Spans.Specializes = span
 			if typ == "" {
 				p.diag(SeverityError, "Expected a type after 'specializes'", p.cur(), e.ID)
 			}
@@ -446,7 +503,11 @@ func (p *parser) parseNamed(parentID string, startTok Token, kind, direction, do
 		case t.Text == "{":
 			e.Spans.BodyOpen = t.Start
 			p.next()
-			p.parseMembers(e.ID, true)
+			if kind == "constraint" {
+				p.parseConstraintBody(e)
+			} else {
+				p.parseMembers(e.ID, true)
+			}
 			if p.pos > 0 && p.toks[p.pos-1].Text == "}" {
 				e.Spans.BodyClose = p.toks[p.pos-1].Start
 			}
@@ -459,7 +520,8 @@ func (p *parser) parseNamed(parentID string, startTok Token, kind, direction, do
 			e.Spans.Decl = Span{Start: startTok.Start, End: p.toks[p.pos-1].End}
 			return
 		default:
-			// Unknown suffix: skip to the end of this declaration.
+			// Unknown suffix: preserve source and expose the projection gap.
+			p.unsupported(t, "declaration suffix not yet projected")
 			p.diag(SeverityWarning, fmt.Sprintf("Skipping unexpected %q in declaration", t.Text), t, e.ID)
 			p.skipDeclaration()
 			e.Spans.Decl = Span{Start: startTok.Start, End: p.toks[p.pos-1].End}
@@ -476,29 +538,21 @@ func (p *parser) parseNamed(parentID string, startTok Token, kind, direction, do
 }
 
 func (p *parser) readPath() (string, Span) {
-	var b strings.Builder
-	start, end := -1, -1
-	for {
-		t := p.cur()
-		if t.Kind == TokIdent {
-			if start < 0 {
-				start = t.Start
-			}
-			b.WriteString(t.Text)
-			end = t.End
-			p.next()
-			continue
-		}
-		if t.Kind == TokPunct && (t.Text == "::" || t.Text == ".") {
-			b.WriteString(t.Text)
-			end = t.End
-			p.next()
-			continue
-		}
-		break
-	}
-	if start < 0 {
+	if p.cur().Kind != TokIdent {
 		return "", Span{}
+	}
+	start := p.cur().Start
+	var b strings.Builder
+	b.WriteString(p.next().Text)
+	end := p.toks[p.pos-1].End
+	for p.cur().Text == "::" || p.cur().Text == "." {
+		b.WriteString(p.next().Text)
+		if p.cur().Kind != TokIdent {
+			p.diag(SeverityError, "Expected a name after path separator", p.cur(), "")
+			break
+		}
+		b.WriteString(p.next().Text)
+		end = p.toks[p.pos-1].End
 	}
 	return b.String(), Span{Start: start, End: end}
 }
@@ -535,6 +589,7 @@ func (p *parser) readValue() (string, Span) {
 }
 
 func (p *parser) parseConnection(parentID string, startTok Token, doc string, docSpan, docDecl Span) {
+	shortName := p.shortName()
 	name := ""
 	nameSpan := Span{}
 	if p.cur().Kind == TokIdent && p.cur().Text != "connect" {
@@ -587,6 +642,7 @@ func (p *parser) parseConnection(parentID string, startTok Token, doc string, do
 		ID:         "",
 		Name:       name,
 		Kind:       "connection",
+		ShortName:  shortName,
 		ParentID:   parentID,
 		Line:       startTok.Line,
 		Col:        startTok.Col,
@@ -719,7 +775,7 @@ func (p *parser) semantic() {
 		if e.Specializes != "" {
 			e.SpecializesID = p.resolveType(e, e.Specializes)
 			if e.SpecializesID == "" {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved specialisation '%s'", e.Specializes), e.Line, e.ID)
+				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved specialisation '%s'", e.Specializes), e.Spans.Decl.Start, e.ID)
 			}
 		}
 	}
@@ -731,7 +787,7 @@ func (p *parser) semantic() {
 			src, srcTop := p.resolveFeature(scope, e.Source)
 			dst, dstTop := p.resolveFeature(scope, e.Target)
 			if src == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved connection source '%s'", e.Source), e.Line, e.ID)
+				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved connection source '%s'", e.Source), e.Spans.Decl.Start, e.ID)
 			} else {
 				e.SourceID = src.ID
 				if srcTop != nil {
@@ -741,7 +797,7 @@ func (p *parser) semantic() {
 				}
 			}
 			if dst == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved connection target '%s'", e.Target), e.Line, e.ID)
+				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved connection target '%s'", e.Target), e.Spans.Decl.Start, e.ID)
 			} else {
 				e.TargetID = dst.ID
 				if dstTop != nil {
@@ -751,27 +807,41 @@ func (p *parser) semantic() {
 				}
 			}
 			if src != nil && src.Kind != "port" {
-				p.diagAt(SeverityInfo, fmt.Sprintf("Connection source '%s' is a %s, not a port", e.Source, src.Kind), e.Line, e.ID)
+				p.diagAt(SeverityInfo, fmt.Sprintf("Connection source '%s' is a %s, not a port", e.Source, src.Kind), e.Spans.Decl.Start, e.ID)
 			}
 			if dst != nil && dst.Kind != "port" {
-				p.diagAt(SeverityInfo, fmt.Sprintf("Connection target '%s' is a %s, not a port", e.Target, dst.Kind), e.Line, e.ID)
+				p.diagAt(SeverityInfo, fmt.Sprintf("Connection target '%s' is a %s, not a port", e.Target, dst.Kind), e.Spans.Decl.Start, e.ID)
+			}
+		case "dependency":
+			scope := m.ByID[e.ParentID]
+			if src := p.resolveRef(scope, e.Source); src != nil {
+				e.SourceID = src.ID
+			}
+			if dst := p.resolveRef(scope, e.Target); dst != nil {
+				e.TargetID = dst.ID
+			}
+			if e.SourceID == "" || e.TargetID == "" {
+				p.diagAt(SeverityWarning, "Unresolved dependency endpoint", e.Spans.Decl.Start, e.ID)
 			}
 		case "satisfy":
 			scope := m.ByID[e.ParentID]
 			req, _ := p.resolveFeature(scope, e.Requirement)
 			sat, _ := p.resolveFeature(scope, e.Satisfier)
 			if req == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved requirement '%s'", e.Requirement), e.Line, e.ID)
+				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved requirement '%s'", e.Requirement), e.Spans.Decl.Start, e.ID)
 			} else {
 				e.RequirementID = req.ID
 			}
 			if sat == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved satisfier '%s'", e.Satisfier), e.Line, e.ID)
+				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved satisfier '%s'", e.Satisfier), e.Spans.Decl.Start, e.ID)
 			} else {
 				e.SatisfierID = sat.ID
 			}
 		}
 	}
+
+	p.resolveBehavior()
+	p.collectReferences()
 
 	// Resolve requirement documentation through usage types.
 	for _, e := range m.Elements {
@@ -795,7 +865,7 @@ func (p *parser) semantic() {
 	for _, group := range seen {
 		if len(group) > 1 {
 			for _, e := range group[1:] {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Duplicate name '%s' in the same container", e.Name), e.Line, e.ID)
+				p.diagAt(SeverityWarning, fmt.Sprintf("Duplicate name '%s' in the same container", e.Name), e.Spans.Decl.Start, e.ID)
 			}
 		}
 	}
@@ -813,91 +883,6 @@ func (p *parser) diagAt(severity, msg string, offset int, elementID string) {
 	p.model.Diagnostics = append(p.model.Diagnostics, Diagnostic{
 		Severity: severity, Message: msg, Line: line, Column: col, ElementID: elementID,
 	})
-}
-
-func (p *parser) resolveType(e *Element, path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if scalarTypes[path] || strings.HasPrefix(path, "ScalarValues::") {
-		return "builtin:" + path
-	}
-	if ref := p.resolveRef(e, path); ref != nil {
-		return ref.ID
-	}
-	return ""
-}
-
-func (p *parser) resolveRef(scope *Element, path string) *Element {
-	if path == "" {
-		return nil
-	}
-	path = strings.ReplaceAll(path, ".", "::")
-	candidates := []string{path}
-	for e := scope; e != nil; e = p.model.ByID[e.ParentID] {
-		if e.QName != "" {
-			candidates = append(candidates, e.QName+"::"+path)
-		}
-	}
-	for _, q := range candidates {
-		if e := p.model.ByID[q]; e != nil {
-			return e
-		}
-	}
-	// Last resort: suffix match, preferring definitions.
-	var best *Element
-	for _, e := range p.model.Elements {
-		if e.Kind == "root" {
-			continue
-		}
-		if e.Name == path || strings.HasSuffix(e.QName, "::"+path) {
-			if best == nil || (e.IsDef && !best.IsDef) {
-				best = e
-			}
-		}
-	}
-	return best
-}
-
-// resolveFeature resolves a feature path such as `spark1.interconnect` or
-// `ai.gateway.downstream`, following usage types when necessary. It also
-// returns the top-level node under the scope for diagram mapping.
-func (p *parser) resolveFeature(scope *Element, path string) (*Element, *Element) {
-	if scope == nil || path == "" {
-		return nil, nil
-	}
-	if strings.Contains(path, "::") && !strings.Contains(path, ".") {
-		e := p.resolveRef(scope, path)
-		return e, e
-	}
-	segs := strings.Split(path, ".")
-	cur := scope
-	var top *Element
-	for i, seg := range segs {
-		if seg == "" {
-			continue
-		}
-		next := p.findChild(cur, seg)
-		if next == nil {
-			next = p.findInType(cur, seg)
-		}
-		if next == nil {
-			// Try a type/qualified reference for the remainder.
-			rest := strings.Join(segs[i:], ".")
-			if ref := p.resolveRef(cur, rest); ref != nil {
-				next = ref
-			}
-		}
-		if next == nil {
-			return nil, top
-		}
-		cur = next
-		if i == 0 {
-			top = next
-		}
-	}
-	return cur, top
 }
 
 func (p *parser) findChild(parent *Element, name string) *Element {

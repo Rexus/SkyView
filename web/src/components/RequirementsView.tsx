@@ -24,6 +24,8 @@ import {
   satisfiesFor,
   score,
   shortKind,
+  requiredConstraints,
+  verificationCasesFor,
 } from '../utils'
 
 interface Props {
@@ -121,7 +123,7 @@ export default function RequirementsView({
               className={cx(status === s && 'active')}
               onClick={() => setStatus(s)}
             >
-              {s === 'all' ? 'All' : s === 'satisfied' ? 'Satisfied' : 'Open'}
+              {s === 'all' ? 'All' : s === 'satisfied' ? 'With links' : 'Without links'}
             </button>
           ))}
         </div>
@@ -135,7 +137,7 @@ export default function RequirementsView({
         </div>
         <div className="grow" />
         <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-          {satisfiedCount}/{requirements.length} satisfied
+          {satisfiedCount}/{requirements.length} linked · verification not run
         </span>
         <button className="btn btn-sm" onClick={() => onAddSatisfy()}>
           <CheckCheck size={13} /> Trace link
@@ -180,6 +182,7 @@ export default function RequirementsView({
                           <span className="legend-dot" style={{ background: kindColor(req) }} />
                           {displayName(req)}
                         </span>
+                        {requiredConstraints(model, req).map(c => <div key={c.id} className="cell-mono" style={{ whiteSpace: 'pre-wrap', marginTop: 6, fontWeight: 'normal' }}>{c.expression}</div>)}
                       </th>
                       {columns.map((c) => {
                         const has = links.some((l) => l.id === c.id)
@@ -225,7 +228,7 @@ export default function RequirementsView({
                     <span className="badge badge-muted">{req.isDef ? 'definition' : shortKind(req)}</span>
                     {links.length > 0 ? (
                       <span className="badge badge-success">
-                        <CheckCircle2 size={10} /> {links.length} satisfied
+                        <CheckCircle2 size={10} /> {links.length} linked
                       </span>
                     ) : (
                       <span className="badge badge-warning">
@@ -236,7 +239,7 @@ export default function RequirementsView({
                       <button
                         className="icon-button"
                         style={{ width: 26, height: 26 }}
-                        title="Edit requirement text"
+                        title="Edit requirement documentation"
                         onClick={(e) => {
                           e.stopPropagation()
                           if (editing) setEditingId(null)
@@ -301,12 +304,22 @@ export default function RequirementsView({
                     </div>
                   ) : (
                     <p className="req-text">
-                      {req.docResolved || req.doc || 'No requirement text yet. Click the pencil to write it.'}
+                      {req.docResolved || req.doc || 'No documentation yet. Select the requirement to inspect its constraints.'}
                     </p>
                   )}
 
+                  {requiredConstraints(model, req).map(constraint => (
+                    <div key={constraint.id} className="field">
+                      <span className="field-label">Required constraint</span>
+                      <button className="chip" style={{ whiteSpace: 'pre-wrap', textAlign: 'left' }} onClick={(e) => { e.stopPropagation(); onSelect(constraint.id) }}>{constraint.expression}</button>
+                    </div>
+                  ))}
+                  {verificationCasesFor(model, req).map(v => (
+                    <button key={v.id} className="chip" onClick={(e) => { e.stopPropagation(); onSelect(v.id) }}>Planned: {displayName(v)}</button>
+                  ))}
+
                   <div className="req-links">
-                    <span className="label">Satisfied by</span>
+                    <span className="label">Satisfaction assertions</span>
                     {links.length === 0 ? (
                       <span className="req-empty">no links</span>
                     ) : (

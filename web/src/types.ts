@@ -17,6 +17,8 @@ export interface Spans {
   decl: Span
   name: Span
   type: Span
+  specializes: Span
+  expression: Span
   value: Span
   doc: Span
   docDecl: Span
@@ -25,6 +27,11 @@ export interface Spans {
 }
 
 export interface SysmlElement {
+  shortName?: string
+  expression?: string
+  constraintRole?: string
+  valueId?: string
+  implicit?: boolean
   id: string
   name: string
   kind: string
@@ -78,7 +85,7 @@ export interface FileInfo {
   modified: string
 }
 
-export type Tab = 'grid' | 'diagram' | 'requirements' | 'source'
+export type Tab = 'grid' | 'diagram' | 'requirements' | 'source' | 'shared'
 export type DiagramMode = 'interconnection' | 'containment'
 
 export interface LayoutNode {

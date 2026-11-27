@@ -9,6 +9,12 @@ stored as plain `.sysml` files.
 SkyView is experimental and implements a subset of SysML v2. OMG conformance has not been established.
 See the [initial baseline record](docs/baseline.md) for its origin, verification and known limits.
 
+[![SkyView displaying the inspection drone's connected subsystems](docs/images/skyview-drone.jpg)](docs/images/skyview-drone.jpg)
+
+Explore the [inspection drone example](docs/drone-example.md): connected subsystems, four requirements,
+mission behavior and planned verification checks. The native-valid model loads without diagnostics.
+The guide includes a generated sequence preview and the current behavior-view limitations.
+
 **Contents:** [Features](#features) · [Quick start](#quick-start) · [Development](#development) ·
 [Language support](#language-support) · [Project layout](#project-layout) · [Origins](#origins)
 
@@ -17,10 +23,12 @@ See the [initial baseline record](docs/baseline.md) for its origin, verification
 - **Visual modeling:** interconnection and containment diagrams, automatic layout, port connections,
   saved node positions and diagram notes.
 - **Grid editing:** edit element names, types, values and documentation; add or remove elements.
-- **Requirements:** browse requirement text, add satisfaction links and inspect a traceability matrix.
+- **Requirements:** inspect native constraints, satisfaction assertions and planned verification links.
 - **Source editing:** syntax highlighting, parser diagnostics and direct access to the model text.
 - **File workflows:** import and download `.sysml` files, undo and redo visual model edits,
   and restore saved model snapshots.
+- **Shared views:** import/export native model bundles and render selected views consistently in the
+  browser or CLI. See [model exchange and shared views](docs/model-exchange.md).
 - **Workspace UI:** model navigation, a command palette, and light and dark themes.
 
 Structured edits modify the source text and reparse the model. Diagram positions and notes are stored
@@ -34,10 +42,12 @@ Install Go 1.24 or later. From the repository root, run:
 go run ./cmd/skyview -addr 127.0.0.1:8081
 ```
 
-Open [SkyView](http://127.0.0.1:8081) and select `example-model.sysml` to explore the bundled example.
+Open [SkyView](http://127.0.0.1:8081) and select `InspectionDrone.sysml` for the drone example, or
+`example-model.sysml` for the original sample.
 The repository includes a built web interface, so this first run does not require Node.js or Nix.
 Port 8081 lets SkyView run alongside SysON on 8080. See the [local run guide](docs/local-development.md)
 for standalone executables, Docker, Podman, persistent storage and backups.
+On Windows with Smart App Control, use the [AlmaLinux WSL path](docs/local-development.md#windows-with-almalinux-wsl).
 
 For Docker, from the repository root:
 
@@ -82,12 +92,12 @@ Open [the development interface](http://127.0.0.1:5173). Its API requests are fo
 Run the existing Go checks from the repository root:
 
 ```sh
-go test ./...
-go vet ./...
+go test ./cmd/... ./internal/...
+go vet ./cmd/... ./internal/...
 ```
 
-The tests exercise the bundled example, selected source edits, connection and satisfaction-link
-resolution, and incomplete input. They are not a SysML conformance suite.
+The tests cover the bundled models, scoped reference resolution, behavior and constraint parsing,
+source edits, quoted identifiers and model exchange. They are not a SysML conformance suite.
 
 To build a standalone executable after building the interface, use
 `go build -o bin/skyview.exe ./cmd/skyview` on Windows or
@@ -103,15 +113,20 @@ and environment assumptions before deploying.
 
 ## Language support
 
-The custom Go parser supports selected declarations, types, values, documentation, connections and
-satisfaction links. Its diagnostics cover some unresolved references and duplicate names.
+The custom Go parser supports selected declarations, types, values, documentation, connections,
+dependencies and satisfaction links. It also projects the drone example's use case, constraints,
+ordered actions, event occurrences, typed messages, state ordering and verification references.
+Diagnostics include unresolved references, malformed supported expressions and duplicate names.
 
 Known boundaries include:
 
-- Import statements are recorded, but external model files and standard libraries are not loaded
-  through those imports.
-- Some constructs, including `view`, `rendering`, `concern`, `alias` and `metadata`, are skipped
-  by the structured parser.
+- Imports resolve within the parsed source, including combined model bundles. External files and
+  standard libraries are not loaded automatically. Recognized library names are a finite subset:
+  scalar types, `ISQ::DurationValue`, and `SI::s` in quantities.
+- Some constructs, including native `view`, `rendering`, `concern`, `alias` and `metadata`, remain
+  unprojected; their source is preserved and the projection gaps are reported.
+- Sequence, activity and state diagrams, constraint evaluation and verification execution are not
+  implemented. The grid and inspector expose the supported behavior relationships and expressions.
 - Successful parsing or display does not establish full language validity or semantic correctness.
 - Satisfaction links express model relationships; their presence does not establish that a
   requirement has passed verification.
@@ -128,9 +143,9 @@ API and Services specification has not been established [3].
 | `internal/sysml/` | Lexer, parser, model representation, diagnostics and source edits |
 | `internal/server/` | HTTP API, workspace storage, history and embedded interface |
 | `web/` | React, TypeScript and Vite frontend |
-| `workspace/` | Default model workspace and bundled example |
+| `workspace/` | Default model workspace and bundled examples |
 | `kubernetes/` | Cluster deployment configuration and guide |
-| `scripts/` | Container image build tooling |
+| `scripts/` | Container build tooling and optional native model validation/preview helpers |
 
 ## Origins
 

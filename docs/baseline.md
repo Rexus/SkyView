@@ -13,7 +13,9 @@ Carl Maier and Viktor Ingre, third-party notices, documentation and local startu
 The Go module path is `github.com/Rexus/SkyView`. The container creates `/data` with ownership
 for UID/GID 65532; without this change the original image exited with a permission error.
 Container image references are qualified for Docker and Podman. Shell-script line endings
-are pinned to LF. The parser and editing behavior are unchanged from the original commit.
+are pinned to LF. At the initial baseline, parser and editing behavior were unchanged from the
+original commit. Subsequent parser work and its checks are recorded in the
+[drone example guide](drone-example.md); model exchange is described in its [own guide](model-exchange.md).
 
 ## Verification
 
@@ -39,6 +41,20 @@ are pinned to LF. The parser and editing behavior are unchanged from the origina
 The tests above establish the recorded startup and storage behavior only. They do not establish
 OMG conformance or arbitrary model round-trip correctness. Podman commands are documented
 for the same Dockerfile, with a named volume owned by the container user.
+
+## WSL follow-up verification
+
+On 2026-11-27, Go 1.27.4 was installed from AlmaLinux AppStream in the existing
+`AlmaLinux-10` WSL distribution. The existing Windows checkout was used directly.
+
+- All three Go tests, `go vet ./...` and the Linux executable build passed.
+- `go run` started successfully as the normal WSL user.
+- Requests from Windows reached the health endpoint, embedded interface and 53-element sample model.
+- Model saving, snapshot creation, exact restore and layout storage passed in a disposable workspace.
+- Smart App Control remained enabled; its `VerifiedAndReputableDesktop` policy was unchanged.
+
+Use the [WSL startup path](local-development.md#windows-with-almalinux-wsl) for local development
+while retaining Smart App Control. The Windows-native execution limitation above still applies.
 
 ## Continuing development
 

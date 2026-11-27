@@ -19,6 +19,9 @@ import {
   kindLabel,
   shortKind,
   satisfiesFor,
+  editCapabilities,
+  requiredConstraints,
+  verificationCasesFor,
 } from '../utils'
 
 interface Props {
@@ -57,10 +60,11 @@ export default function Inspector({
   const isConnection = element.kind === 'connection'
   const isSatisfy = element.kind === 'satisfy'
   const isRequirement = element.kind === 'requirement'
-  const canName = !isRoot && !isSatisfy
-  const canType = !isRoot && !isConnection && !isSatisfy && element.kind !== 'package'
-  const canValue = !isRoot && !isConnection && !isSatisfy && (element.kind === 'attribute' || element.value !== undefined)
-  const canDoc = !isRoot
+  const capabilities = editCapabilities(element)
+  const { name: canName, type: canType, value: canValue, doc: canDoc } = capabilities
+  const constraints = isRequirement ? requiredConstraints(model, element) : []
+  const verifications = isRequirement ? verificationCasesFor(model, element) : []
+  const hasEndpoints = ['connection', 'dependency', 'message', 'succession', 'first'].includes(element.kind)
   const diagCount = diagnosticsFor(model, element.id)
   const parent = byId(model, element.parentId)
   const satisfies = useMemo(
@@ -167,6 +171,37 @@ export default function Inspector({
           </label>
         )}
 
+        {!canType && element.type && (
+          <div className="field"><span className="field-label">{element.kind === 'message' ? 'Payload type' : 'Type'}</span>
+            <EndpointChip id={element.typeId} label={element.type} model={model} onSelect={onSelect} />
+          </div>
+        )}
+        {element.expression && (
+          <div className="field"><span className="field-label">{element.constraintRole || 'Constraint'} expression</span>
+            <div className="field-value mono" style={{ whiteSpace: 'pre-wrap' }}>{element.expression}</div>
+          </div>
+        )}
+        {constraints.map(constraint => (
+          <div className="field" key={constraint.id}><span className="field-label">Required constraint</span>
+            <button className="chip" style={{ whiteSpace: 'pre-wrap', textAlign: 'left' }} onClick={() => onSelect(constraint.id)}>{constraint.expression}</button>
+          </div>
+        ))}
+        {verifications.length > 0 && (
+          <div className="field"><span className="field-label">Planned verification · no results recorded</span>
+            {verifications.map(v => <button className="chip" key={v.id} onClick={() => onSelect(v.id)}>{displayName(v)}</button>)}
+          </div>
+        )}
+        {element.kind === 'verify' && (
+          <div className="field"><span className="field-label">Verification target</span>
+            <EndpointChip id={element.requirementId} label={element.requirement} model={model} onSelect={onSelect} />
+          </div>
+        )}
+        {element.valueId && (
+          <div className="field"><span className="field-label">Bound element</span>
+            <EndpointChip id={element.valueId} label={element.value} model={model} onSelect={onSelect} />
+          </div>
+        )}
+
         {element.specializes && (
           <div className="field">
             <span className="field-label">Specializes</span>
@@ -237,12 +272,12 @@ export default function Inspector({
           </div>
         )}
 
-        {isConnection && (
+        {hasEndpoints && (
           <>
             <div className="field">
-              <span className="field-label">Connect</span>
+              <span className="field-label">{element.kind === 'connection' ? 'Connect' : 'Order / endpoints'}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <EndpointChip id={element.sourceId} label={element.source} model={model} onSelect={onSelect} />
+                {element.source && <EndpointChip id={element.sourceId} label={element.source} model={model} onSelect={onSelect} />}
                 <ArrowRight size={13} style={{ color: 'var(--accent)' }} />
                 <EndpointChip id={element.targetId} label={element.target} model={model} onSelect={onSelect} />
               </div>
@@ -299,7 +334,7 @@ export default function Inspector({
         <button className="btn" onClick={() => onShowInSource(element.line)}>
           <Code2 size={13} /> Source
         </button>
-        {!isRoot && (
+        {capabilities.delete && (
           <button
             className="btn btn-danger"
             style={{ marginLeft: 'auto' }}
@@ -328,7 +363,7 @@ function EndpointChip({
   const el = byId(model, id)
   if (!el) {
     return (
-      <span className="badge badge-warning" style={{ fontFamily: 'var(--font-mono)' }}>
+      <span className={id?.startsWith('builtin:') ? 'badge badge-muted' : 'badge badge-warning'} style={{ fontFamily: 'var(--font-mono)' }}>
         {label || 'unresolved'}
       </span>
     )

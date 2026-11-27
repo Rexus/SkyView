@@ -8,6 +8,7 @@ in a workspace directory. The examples use port **8081**, so SkyView can run alo
 ## Contents
 
 - [Go app](#go-app)
+- [Windows with AlmaLinux WSL](#windows-with-almalinux-wsl)
 - [Docker](#docker)
 - [Podman](#podman)
 - [Data and recovery](#data-and-recovery)
@@ -45,6 +46,41 @@ go build -o bin/skyview ./cmd/skyview
 
 Keep `LICENSE` and `THIRD_PARTY_NOTICES.md` with copies of the executable.
 See [Development](../README.md#development) before changing or rebuilding the interface.
+
+## Windows with AlmaLinux WSL
+
+This route runs the Linux Go toolchain while keeping Windows Smart App Control enabled.
+It uses the same repository and workspace on your Windows drive; no second checkout or container
+is required. A Linux executable built here runs inside WSL.
+
+With an existing `AlmaLinux-10` WSL distribution, install Go once from a PowerShell terminal:
+
+```powershell
+wsl -d AlmaLinux-10 --user root --exec dnf install --assumeyes golang
+```
+
+Then, from the repository root in PowerShell, start SkyView:
+
+```powershell
+wsl -d AlmaLinux-10 --exec go run ./cmd/skyview -addr 127.0.0.1:8081
+```
+
+Keep that terminal open and visit [SkyView](http://127.0.0.1:8081) in your Windows browser.
+Press Ctrl+C in the terminal to stop it. WSL inherits the current repository directory, so the
+default `./workspace` is the same folder used by the Windows checkout. Stop any other SkyView
+instance using port 8081 before starting this one.
+
+To run the checks from the same PowerShell directory:
+
+```powershell
+wsl -d AlmaLinux-10 --exec go test -timeout 90s ./cmd/... ./internal/...
+wsl -d AlmaLinux-10 --exec go vet ./cmd/... ./internal/...
+```
+
+If you use a different distribution name, find it with `wsl --list --quiet` and replace
+`AlmaLinux-10` in the commands. The installation command above applies to AlmaLinux.
+Windows-native `.exe` files remain subject to Windows Application Control; Git commit signing
+does not sign those executables.
 
 ## Docker
 

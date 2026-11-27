@@ -3,6 +3,7 @@ package sysml
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // TokenKind identifies the lexical class of a token.
@@ -19,12 +20,14 @@ const (
 
 // Token is a lexical token with byte offsets and 1-based line/column.
 type Token struct {
-	Kind  TokenKind
-	Text  string
-	Start int
-	End   int
-	Line  int
-	Col   int
+	Quoted bool
+	Error  string
+	Kind   TokenKind
+	Text   string
+	Start  int
+	End    int
+	Line   int
+	Col    int
 }
 
 // Lex splits SysML v2 textual notation into tokens. It is deliberately
@@ -82,25 +85,50 @@ func Lex(src string) []Token {
 			advance(start, i)
 			continue
 		}
-		// String literal.
-		if c == '"' {
+		// Restricted names use single quotes; string literals use double quotes.
+		// Decode the name while retaining its original source range for edits.
+		if c == '"' || c == '\'' {
 			start := i
+			quote := c
+			closed := false
+			var decoded strings.Builder
 			i++
 			for i < n {
 				if src[i] == '\\' && i+1 < n {
+					escaped := src[i+1]
+					switch escaped {
+					case 'n':
+						escaped = '\n'
+					case 'r':
+						escaped = '\r'
+					case 't':
+						escaped = '\t'
+					}
+					decoded.WriteByte(escaped)
 					i += 2
 					continue
 				}
-				if src[i] == '"' {
+				if src[i] == quote {
 					i++
+					closed = true
 					break
 				}
 				if src[i] == '\n' {
 					break
 				}
+				decoded.WriteByte(src[i])
 				i++
 			}
-			toks = append(toks, Token{Kind: TokString, Text: src[start:i], Start: start, End: i, Line: line, Col: col})
+			t := Token{Kind: TokString, Text: src[start:i], Start: start, End: i, Line: line, Col: col}
+			if quote == '\'' {
+				t.Kind = TokIdent
+				t.Text = decoded.String()
+				t.Quoted = true
+			}
+			if !closed {
+				t.Error = "Unterminated quoted name or string"
+			}
+			toks = append(toks, t)
 			advance(start, i)
 			continue
 		}
@@ -119,12 +147,13 @@ func Lex(src string) []Token {
 			continue
 		}
 		// Identifier (allow unicode letters and $).
-		if unicode.IsLetter(rune(c)) || c == '_' || c == '$' {
+		r, _ := utf8.DecodeRuneInString(src[i:])
+		if unicode.IsLetter(r) || c == '_' || c == '$' {
 			start := i
 			for i < n {
-				r := rune(src[i])
+				r, size := utf8.DecodeRuneInString(src[i:])
 				if unicode.IsLetter(r) || unicode.IsDigit(r) || src[i] == '_' || src[i] == '$' {
-					i++
+					i += size
 					continue
 				}
 				break
@@ -139,11 +168,15 @@ func Lex(src string) []Token {
 		if i+1 < n {
 			two = src[i : i+2]
 		}
-		switch two {
-		case "::", "->", "=>", ":=", "==", "!=", "<=", ">=", "&&", "||", "..", "**", ":>", ":>>":
-			i += 2
-		default:
-			i++
+		if i+2 < n && src[i:i+3] == ":>>" {
+			i += 3
+		} else {
+			switch two {
+			case "::", "->", "=>", ":=", "==", "!=", "<=", ">=", "&&", "||", "..", "**", ":>":
+				i += 2
+			default:
+				i++
+			}
 		}
 		toks = append(toks, Token{Kind: TokPunct, Text: src[start:i], Start: start, End: i, Line: line, Col: col})
 		advance(start, i)

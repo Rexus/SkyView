@@ -27,3 +27,19 @@ and [the frontend client](../web/src/api.ts).
 | GET | `/api/files/{name}/history` | List model snapshots |
 | POST | `/api/files/{name}/restore` | Restore a model snapshot |
 | POST | `/api/files/{name}/validate` | Parse submitted source and return diagnostics |
+
+## Shared views
+
+See [Model exchange and shared views](model-exchange.md) for the CLI, versioned configuration,
+ownership and current rendering limits.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/files/{name}/views` | Download the exact shared-view sidecar |
+| PUT | `/api/files/{name}/views` | Validate and publish selections; `If-Match` must contain the source `revision` |
+| GET | `/api/files/{name}/views/{view}` | Render the selected view as SVG, identical to the CLI |
+
+View publication rejects unknown fields and invalid selections. A changed model revision returns
+409; an unsupported or inconsistent selection returns 422. Read routes return 404 for missing
+models/views. Deleting a model also deletes its shared sidecar. These are application APIs, not an
+implementation of the OMG Systems Modeling API.

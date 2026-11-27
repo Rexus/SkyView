@@ -19,6 +19,7 @@ import {
   kindLabel,
   score,
   shortKind,
+  editCapabilities,
 } from '../utils'
 
 interface Props {
@@ -196,16 +197,17 @@ function GridRow({
   const depth = depthOf(model, el)
   const diag = diagnosticsFor(model, el.id)
   const hasError = model.diagnostics.some((d) => d.elementId === el.id && d.severity === 'error')
-  const canName = el.kind !== 'satisfy'
-  const canType = !['package', 'connection', 'satisfy'].includes(el.kind)
-  const canValue = el.kind === 'attribute' || el.value !== undefined
+  const capabilities = editCapabilities(el)
+  const { name: canName, type: canType, value: canValue, doc: canDoc } = capabilities
   const docValue = el.docResolved || el.doc || ''
   const docTarget =
     el.kind === 'requirement' && !el.isDef && el.typeId ? el.typeId : el.id
 
   let typeText = el.type ?? ''
-  if (el.kind === 'connection') typeText = `${el.source ?? '?'} → ${el.target ?? '?'}`
+  if (['connection', 'dependency', 'message', 'succession'].includes(el.kind)) typeText = `${el.source ?? '?'} → ${el.target ?? '?'}`
   if (el.kind === 'satisfy') typeText = `${el.requirement ?? '?'} by ${el.satisfier ?? '?'}`
+  if (el.kind === 'verify') typeText = el.requirement ?? ''
+  if (el.kind === 'first') typeText = el.target ?? ''
   if (el.kind === 'package') typeText = ''
 
   return (
@@ -261,18 +263,18 @@ function GridRow({
           />
         ) : (
           <span className="cell-mono" style={{ color: 'var(--text-dim)' }}>
-            {el.multiplicity ? `[${el.multiplicity}]` : '—'}
+            {el.expression || (el.multiplicity ? `[${el.multiplicity}]` : '—')}
           </span>
         )}
       </td>
       <td>
-        <EditableCell
+        {canDoc ? <EditableCell
           value={docValue}
           className="cell-text"
           placeholder="—"
           multiline
           onCommit={(v) => onPatch(docTarget, { id: docTarget, doc: v })}
-        />
+        /> : <span className="cell-text">{docValue || '—'}</span>}
       </td>
       <td>
         <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
@@ -290,7 +292,8 @@ function GridRow({
           <button
             className="icon-button row-action"
             style={{ width: 24, height: 24, color: 'var(--danger)' }}
-            title="Delete element"
+            disabled={!capabilities.delete}
+            title={capabilities.delete ? 'Delete element' : 'Implicit ordering belongs to its following declaration'}
             onClick={(e) => {
               e.stopPropagation()
               onDelete(el.id)

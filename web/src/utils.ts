@@ -91,7 +91,7 @@ export function isContainer(el: SysmlElement): boolean {
   return (
     el.kind === 'root' ||
     el.kind === 'package' ||
-    (el.spans.bodyOpen >= 0 && el.kind !== 'connection' && el.kind !== 'satisfy')
+    (el.spans.bodyOpen >= 0 && !isRelationship(el) && !['constraint', 'entry'].includes(el.kind))
   )
 }
 
@@ -120,6 +120,11 @@ export function displayName(el: SysmlElement | undefined): string {
   if (!el) return '—'
   if (el.name) return el.name
   if (el.kind === 'root') return el.qname || 'root'
+  if (el.kind === 'succession') return `${el.source} → ${el.target}`
+  if (el.kind === 'first') return `first ${el.target}`
+  if (el.kind === 'verify') return `verify ${el.requirement}`
+  if (el.kind === 'constraint') return `${el.constraintRole ?? ''} constraint`.trim()
+  if (el.kind === 'objective' || el.kind === 'entry') return el.kind
   return '(unnamed)'
 }
 
@@ -240,7 +245,7 @@ export function diagramScopes(model: SysmlModel): SysmlElement[] {
   return model.elements
     .filter((e) => {
       if (e.kind === 'root') return false
-      if (e.kind === 'port' || e.kind === 'attribute' || e.kind === 'connection' || e.kind === 'satisfy') {
+      if (e.kind === 'port' || e.kind === 'attribute' || e.kind === 'constraint' || isRelationship(e)) {
         return false
       }
       return (e.children?.length ?? 0) > 0 || e.spans.bodyOpen >= 0
@@ -343,4 +348,45 @@ export function requirementsOf(model: SysmlModel): SysmlElement[] {
 
 export function diagnosticsFor(model: SysmlModel, elementId: string): number {
   return model.diagnostics.filter((d) => d.elementId === elementId).length
+}
+
+export function isRelationship(el: SysmlElement): boolean {
+  return ['connection', 'dependency', 'satisfy', 'verify', 'message', 'succession', 'first'].includes(el.kind)
+}
+
+// Keep UI affordances aligned with the source editor's supported operations.
+export function editCapabilities(el: SysmlElement) {
+  const type = !isRelationship(el) && !['root', 'package', 'constraint', 'entry'].includes(el.kind)
+    && (el.spans.name.end > el.spans.name.start || el.spans.type.end > el.spans.type.start)
+  return {
+    name: el.kind !== 'root' && !el.implicit && el.spans.name.end > el.spans.name.start,
+    type,
+    value: type && (el.kind === 'attribute' || el.value !== undefined),
+    doc: !el.implicit && !['root', 'first', 'succession', 'verify', 'entry', 'dependency'].includes(el.kind),
+    delete: el.kind !== 'root' && !el.implicit,
+  }
+}
+
+export function requiredConstraints(model: SysmlModel, req: SysmlElement): SysmlElement[] {
+  const constraints: SysmlElement[] = []
+  const seen = new Set<string>()
+  let current: SysmlElement | undefined = req
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id)
+    constraints.push(...childrenOf(model, current.id).filter(e => e.kind === 'constraint' && e.constraintRole === 'require'))
+    current = byId(model, current.typeId)
+  }
+  return constraints
+}
+
+export function verificationCasesFor(model: SysmlModel, req: SysmlElement): SysmlElement[] {
+  const targets = new Set([req.id, req.typeId].filter(Boolean))
+  const cases = new Map<string, SysmlElement>()
+  for (const link of model.elements) {
+    if (link.kind !== 'verify' || !targets.has(link.requirementId)) continue
+    let owner = byId(model, link.parentId)
+    while (owner && !['verification', 'verification case'].includes(owner.kind)) owner = byId(model, owner.parentId)
+    if (owner) cases.set(owner.id, owner)
+  }
+  return [...cases.values()]
 }

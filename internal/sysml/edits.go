@@ -60,66 +60,15 @@ func RenameElement(src string, m *Model, id, newName string) (string, error) {
 	if e.Spans.Name.Start == e.Spans.Name.End {
 		return "", fmt.Errorf("element has no name in the source")
 	}
-	oldName, oldQName := e.Name, e.QName
 	edits := []Edit{{Start: e.Spans.Name.Start, End: e.Spans.Name.End, Text: newName}}
-
-	// Update type/specialisation references and feature paths.
-	for _, other := range m.Elements {
-		if other.ID == e.ID {
-			continue
-		}
-		if other.Spans.Type.Start < other.Spans.Type.End && other.Type != "" {
-			if other.Type == oldName {
-				edits = append(edits, Edit{Start: other.Spans.Type.Start, End: other.Spans.Type.End, Text: newName})
-			} else if other.Type == oldQName {
-				edits = append(edits, Edit{Start: other.Spans.Type.Start, End: other.Spans.Type.End, Text: qnameWithNewName(oldQName, newName)})
-			}
-		}
-		switch other.Kind {
-		case "connection":
-			if other.SourceSpan.Start < other.SourceSpan.End {
-				if ns := replacePathSegment(other.Source, oldName, newName); ns != other.Source {
-					edits = append(edits, Edit{Start: other.SourceSpan.Start, End: other.SourceSpan.End, Text: ns})
-				}
-			}
-			if other.TargetSpan.Start < other.TargetSpan.End {
-				if nt := replacePathSegment(other.Target, oldName, newName); nt != other.Target {
-					edits = append(edits, Edit{Start: other.TargetSpan.Start, End: other.TargetSpan.End, Text: nt})
-				}
-			}
-		case "satisfy":
-			if other.RequirementSpan.Start < other.RequirementSpan.End {
-				if nr := replacePathSegment(other.Requirement, oldName, newName); nr != other.Requirement {
-					edits = append(edits, Edit{Start: other.RequirementSpan.Start, End: other.RequirementSpan.End, Text: nr})
-				}
-			}
-			if other.SatisfierSpan.Start < other.SatisfierSpan.End {
-				if ns := replacePathSegment(other.Satisfier, oldName, newName); ns != other.Satisfier {
-					edits = append(edits, Edit{Start: other.SatisfierSpan.Start, End: other.SatisfierSpan.End, Text: ns})
-				}
-			}
+	seen := map[Span]bool{e.Spans.Name: true}
+	for _, ref := range m.References {
+		if ref.ElementID == e.ID && !seen[ref.Span] {
+			edits = append(edits, Edit{Start: ref.Span.Start, End: ref.Span.End, Text: newName})
+			seen[ref.Span] = true
 		}
 	}
 	return ApplyEdits(src, edits)
-}
-
-func qnameWithNewName(oldQName, newName string) string {
-	parts := strings.Split(oldQName, "::")
-	if len(parts) == 0 {
-		return newName
-	}
-	parts[len(parts)-1] = newName
-	return strings.Join(parts, "::")
-}
-
-func replacePathSegment(path, oldName, newName string) string {
-	segs := strings.Split(path, ".")
-	for i, s := range segs {
-		if s == oldName {
-			segs[i] = newName
-		}
-	}
-	return strings.Join(segs, ".")
 }
 
 // SetType sets or removes an element's type.
@@ -128,7 +77,7 @@ func SetType(src string, m *Model, id, typ string) (string, error) {
 	if e == nil {
 		return "", fmt.Errorf("element not found")
 	}
-	if e.Kind == "connection" || e.Kind == "satisfy" || e.Kind == "root" || e.Kind == "package" {
+	if isRelationship(e) || e.Kind == "root" || e.Kind == "package" || e.Kind == "constraint" || e.Kind == "entry" {
 		return "", fmt.Errorf("cannot set a type on a %s", e.Kind)
 	}
 	typ = strings.TrimSpace(typ)
@@ -165,7 +114,7 @@ func SetValue(src string, m *Model, id, value string) (string, error) {
 	if e == nil {
 		return "", fmt.Errorf("element not found")
 	}
-	if e.Kind == "connection" || e.Kind == "satisfy" || e.Kind == "root" || e.Kind == "package" {
+	if isRelationship(e) || e.Kind == "root" || e.Kind == "package" || e.Kind == "constraint" || e.Kind == "entry" {
 		return "", fmt.Errorf("cannot set a value on a %s", e.Kind)
 	}
 	value = strings.TrimSpace(value)
@@ -203,6 +152,9 @@ func SetDoc(src string, m *Model, id, doc string) (string, error) {
 	e := m.Element(id)
 	if e == nil {
 		return "", fmt.Errorf("element not found")
+	}
+	if e.Implicit || e.Kind == "first" || e.Kind == "succession" || e.Kind == "verify" || e.Kind == "entry" || e.Kind == "dependency" {
+		return "", fmt.Errorf("edit this behavior declaration in source")
 	}
 	doc = strings.TrimSpace(strings.ReplaceAll(doc, "\r\n", "\n"))
 	if strings.Contains(doc, "*/") {
@@ -257,6 +209,9 @@ func DeleteElement(src string, m *Model, id string) (string, error) {
 	e := m.Element(id)
 	if e == nil {
 		return "", fmt.Errorf("element not found")
+	}
+	if e.Implicit {
+		return "", fmt.Errorf("implicit succession belongs to its following declaration; edit it in source")
 	}
 	if e.Kind == "root" {
 		return "", fmt.Errorf("the root cannot be deleted")
@@ -383,6 +338,9 @@ func AddSatisfy(src string, m *Model, parentID, requirement, satisfier string) (
 }
 
 func insertChild(src string, parent *Element, text, parentIndent, childIndent string) (string, error) {
+	if parent.Kind == "constraint" || isRelationship(parent) || parent.Kind == "entry" {
+		return "", fmt.Errorf("cannot insert a declaration into this element; edit it in source")
+	}
 	if parent.Kind == "root" {
 		prefix := ""
 		if len(src) > 0 && !strings.HasSuffix(src, "\n") {

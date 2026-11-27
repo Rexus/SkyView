@@ -66,7 +66,7 @@ const NOTE_H = 170
 const LAYOUT_VERSION = 3
 
 function isDiagramNode(el: SysmlElement): boolean {
-  return !['port', 'attribute', 'connection', 'satisfy', 'root'].includes(el.kind)
+  return !['port', 'attribute', 'connection', 'satisfy', 'dependency', 'message', 'succession', 'first', 'verify', 'constraint', 'entry', 'root'].includes(el.kind)
 }
 
 function estimateHeight(

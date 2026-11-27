@@ -40,8 +40,8 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 type createFileRequest struct {
-	Name    string `json:"name"`
-	Content string `json:"content"`
+	Name    string  `json:"name"`
+	Content *string `json:"content"`
 }
 
 func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
@@ -61,9 +61,9 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "a file with that name already exists", nil)
 		return
 	}
-	content := req.Content
-	if strings.TrimSpace(content) == "" {
-		content = starterModel(req.Name)
+	content := starterModel(req.Name)
+	if req.Content != nil {
+		content = *req.Content
 	}
 	if err := s.writeFile(req.Name, content); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error(), nil)

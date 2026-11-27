@@ -2397,3 +2397,9 @@ a {
     overflow-x: auto;
   }
 }
+
+.shared-views { overflow: auto; padding: 20px; flex: 1; min-height: 0; }
+.shared-view-toolbar { display: flex; gap: 20px; align-items: center; }
+.shared-view-toolbar select { margin-left: 12px; padding: 6px; }
+.shared-view-note { font-size: 12px; opacity: .7; margin: 16px 0; max-width: 900px; }
+.shared-view-svg { display: block; width: 100%; max-width: 1100px; background: white; }

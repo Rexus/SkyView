@@ -284,6 +284,8 @@ func (s *Server) deleteFile(name string) error {
 		return err
 	}
 	_ = os.Remove(s.layoutPath(name))
+	viewPath, _ := s.viewsPath(name)
+	_ = os.Remove(viewPath)
 	_ = os.RemoveAll(s.historyDir(name))
 	return nil
 }

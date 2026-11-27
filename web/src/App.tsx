@@ -60,6 +60,7 @@ import GridEditor from './components/GridEditor'
 import DiagramView from './components/DiagramView'
 import RequirementsView from './components/RequirementsView'
 import SourceView from './components/SourceView'
+import SharedViews from './components/SharedViews'
 import Inspector from './components/Inspector'
 import CommandPalette, { type PaletteCommand } from './components/CommandPalette'
 import Toasts from './components/Toasts'
@@ -105,7 +106,7 @@ export default function App() {
   const [files, setFiles] = useState<FileInfo[]>([])
   const [file, setFile] = useState<FileResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<Tab>('grid')
+  const [tab, setTab] = useState<Tab>(new URLSearchParams(location.search).has('view') ? 'shared' : 'grid')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('skyview-theme')
@@ -156,6 +157,7 @@ export default function App() {
       try {
         const doc = await getFile(name)
         setFile(doc)
+        const page = new URL(location.href); page.searchParams.set('file', name); page.searchParams.delete('view'); history.replaceState(null, '', page)
         setTab('grid')
       } catch (err) {
         pushToast('error', err instanceof Error ? err.message : String(err))
@@ -174,7 +176,9 @@ export default function App() {
         if (cancelled) return
         setFiles(fs)
         if (fs.length > 0) {
-          const doc = await getFile(fs[0].name)
+          const requested = new URLSearchParams(location.search).get('file')
+          if (requested && !fs.some(f => f.name === requested)) throw new Error(`Requested model ${requested} is not in this workspace`)
+          const doc = await getFile(requested || fs[0].name)
           if (!cancelled) setFile(doc)
         }
       } catch (err) {
@@ -271,7 +275,9 @@ export default function App() {
     const fs = await listFiles()
     setFiles(fs)
     if (fs.length > 0) {
-      const doc = await getFile(fs[0].name)
+      const requested = new URLSearchParams(location.search).get('file')
+          if (requested && !fs.some(f => f.name === requested)) throw new Error(`Requested model ${requested} is not in this workspace`)
+          const doc = await getFile(requested || fs[0].name)
       setFile(doc)
       setSelectedId(null)
       setSourceDirty(false)
@@ -842,6 +848,7 @@ export default function App() {
               <button className={cx('tab', tab === 'source' && 'active')} onClick={() => setTab('source')}>
                 <Code2 size={14} /> Source <span className="count">{errors + warnings}</span>
               </button>
+              <button className={cx('tab', tab === 'shared' && 'active')} onClick={() => setTab('shared')}>Shared views</button>
               <div className="viewbar-spacer" />
               <div className="viewbar-actions">
                 <button
@@ -896,6 +903,8 @@ export default function App() {
                 </button>
               </div>
             </div>
+          ) : tab === 'shared' ? (
+            <SharedViews file={file} />
           ) : tab === 'grid' ? (
             <GridEditor
               model={file.model}
