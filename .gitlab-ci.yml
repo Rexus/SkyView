@@ -1,0 +1,27 @@
+stages:
+  - test
+  - build
+
+test:go:
+  stage: test
+  image: golang:1.24
+  script:
+    - go test ./...
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+build:web:
+  stage: build
+  image: node:22
+  script:
+    - cd web
+    - npm ci --no-audit --no-fund
+    - npm run build
+  artifacts:
+    paths:
+      - internal/server/dist
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

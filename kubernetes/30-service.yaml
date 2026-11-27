@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: skyview
+  namespace: skyview
+  labels:
+    app.kubernetes.io/name: skyview
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: skyview
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

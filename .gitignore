@@ -1,0 +1,8 @@
+bin/
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+workspace/.skyview/
+*.log
+.DS_Store
+.env
