@@ -8,4 +8,7 @@ workspace/
 .env
 
 # Optional scientific example bytecode
-scripts/pendulum/__pycache__/
+examples/inverted-pendulum/simulation/__pycache__/
+
+# CaaS account configuration
+accounts.json

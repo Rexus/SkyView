@@ -6,9 +6,54 @@ import (
 	"testing"
 )
 
+func TestAnonymousBinaryConnection(t *testing.T) {
+	const source = `package Wiring {
+	port def Signal;
+	part def Sender { port output : Signal; }
+	part def Receiver { port 'input port' : Signal; }
+	part def Assembly {
+		part 'Sender unit' : Sender;
+		part 'Receiver unit' : Receiver;
+		part spare : Receiver;
+		connect 'Sender unit'.output to 'Receiver unit'.'input port';
+		connect ('Sender unit'.output, 'Receiver unit'.'input port', spare.'input port');
+		connection 'connect' connect 'Sender unit'.output to spare.'input port';
+	}
+}`
+	model := Parse(source)
+	if len(model.Diagnostics) != 0 {
+		t.Fatalf("unexpected projection diagnostics: %+v", model.Diagnostics)
+	}
+	if len(model.Unsupported) != 1 || model.Unsupported[0].Reason != "parenthesized connection ends are not projected" {
+		t.Fatalf("expected a projection limit for parenthesized ends: %+v", model.Unsupported)
+	}
+	var anonymous *Element
+	connections := 0
+	for _, element := range model.Elements {
+		if element.Kind != "connection" {
+			continue
+		}
+		connections++
+		if element.Spans.Name.Start == element.Spans.Name.End {
+			anonymous = element
+		}
+	}
+	if named := model.Element("Wiring::Assembly::connect"); connections != 2 || named == nil || named.TargetNodeID != "Wiring::Assembly::spare" {
+		t.Fatalf("expected both binary connections, including the quoted name: %+v", named)
+	}
+	if anonymous == nil || anonymous.Implicit || anonymous.ShortName != "" ||
+		anonymous.SourceNodeID != "Wiring::Assembly::Sender unit" || anonymous.SourceID != "Wiring::Sender::output" ||
+		anonymous.TargetNodeID != "Wiring::Assembly::Receiver unit" || anonymous.TargetID != "Wiring::Receiver::input port" {
+		t.Fatalf("incorrect authored endpoints: %+v", anonymous)
+	}
+	if got := source[anonymous.Spans.Decl.Start:anonymous.Spans.Decl.End]; got != "connect 'Sender unit'.output to 'Receiver unit'.'input port';" {
+		t.Fatalf("incorrect source span: %q", got)
+	}
+}
+
 func loadSample(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile("../../examples/starter/example-model.sysml")
+	b, err := os.ReadFile("../../examples/starter/models/example-model.sysml")
 	if err != nil {
 		t.Fatalf("read sample: %v", err)
 	}

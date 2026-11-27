@@ -1,4 +1,8 @@
 SHELL := bash
+IMAGE ?= skyview:local
+SKAFFOLD_FLAGS ?=
+SYSML_CHANNEL ?= published
+SYSML_REFRESH ?= $(shell date -u +%Y%m%dT%H%M%SZ)
 
 .PHONY: dev-api dev-web build run test fmt vet docker deploy deploy-dev clean
 
@@ -9,33 +13,30 @@ dev-web:
 	nix develop --command bash -c 'cd web && npm run dev'
 
 build:
-	nix develop --command bash -c 'cd web && npm run build'
-	nix develop --command go build -o bin/skyview ./cmd/skyview
+	SYSML_CHANNEL=$(SYSML_CHANNEL) nix develop --command bash deployment/go/build.sh
 
 run: build
-	./bin/skyview
+	./bin/local/skyview
 
 test:
-	nix develop --command go test ./cmd/... ./internal/... ./examples/...
+	nix develop --command go test . ./cmd/... ./internal/... ./examples/...
 
 vet:
-	nix develop --command go vet ./cmd/... ./internal/... ./examples/...
+	nix develop --command go vet . ./cmd/... ./internal/... ./examples/...
 
 fmt:
-	nix develop --command bash -c 'gofmt -w cmd internal examples'
+	nix develop --command bash -c 'gofmt -w version.go version_test.go cmd internal examples'
 
 docker:
-	docker build -t registry.example.com/library/skyview:dev .
+	SYSML_CHANNEL=$(SYSML_CHANNEL) SYSML_REFRESH=$(SYSML_REFRESH) bash deployment/docker/build.sh -t $(IMAGE)
 
 deploy:
-	@HARBOR_USER=$${HARBOR_USER:-admin} \
-	 HARBOR_PASSWORD=$${HARBOR_PASSWORD:-$$(kubectl -n harbor get secret harbor-core -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d)} \
-	 nix develop --command skaffold run --cache-artifacts=false --insecure-registry=registry.example.com
+	SYSML_CHANNEL=$(SYSML_CHANNEL) SYSML_REFRESH=$(SYSML_REFRESH) \
+	  nix develop --command skaffold run --filename deployment/caas/skaffold.yaml $(SKAFFOLD_FLAGS)
 
 deploy-dev:
-	@HARBOR_USER=$${HARBOR_USER:-admin} \
-	 HARBOR_PASSWORD=$${HARBOR_PASSWORD:-$$(kubectl -n harbor get secret harbor-core -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d)} \
-	 nix develop --command skaffold dev --cache-artifacts=false --insecure-registry=registry.example.com
+	SYSML_CHANNEL=$(SYSML_CHANNEL) SYSML_REFRESH=$(SYSML_REFRESH) \
+	  nix develop --command skaffold dev --filename deployment/caas/skaffold.yaml --cleanup=false $(SKAFFOLD_FLAGS)
 
 clean:
 	rm -rf bin web/dist internal/server/dist/assets

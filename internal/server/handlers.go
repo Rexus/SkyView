@@ -12,11 +12,12 @@ import (
 
 // FileResponse is the complete document state returned to the client.
 type FileResponse struct {
-	Name        string             `json:"name"`
-	Content     string             `json:"content"`
-	Model       *sysml.Model       `json:"model"`
-	Diagnostics []sysml.Diagnostic `json:"diagnostics"`
-	Revision    string             `json:"revision"`
+	Name           string             `json:"name"`
+	Content        string             `json:"content"`
+	Model          *sysml.Model       `json:"model"`
+	Diagnostics    []sysml.Diagnostic `json:"diagnostics"`
+	Revision       string             `json:"revision"`
+	AddedElementID string             `json:"addedElementId,omitempty"`
 }
 
 func makeFileResponse(name, content string) FileResponse {
@@ -325,10 +326,12 @@ func (s *Server) handleDeleteElement(w http.ResponseWriter, r *http.Request) {
 }
 
 type addConnectionRequest struct {
-	Parent string `json:"parent"`
-	Name   string `json:"name"`
-	Source string `json:"source"`
-	Target string `json:"target"`
+	Parent string              `json:"parent"`
+	Name   string              `json:"name"`
+	Source string              `json:"source"`
+	Target string              `json:"target"`
+	From   *sysml.PortEndpoint `json:"from"`
+	To     *sysml.PortEndpoint `json:"to"`
 }
 
 func (s *Server) handleAddConnection(w http.ResponseWriter, r *http.Request) {
@@ -345,13 +348,29 @@ func (s *Server) handleAddConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err.Error(), nil)
 		return
 	}
-	m := sysml.Parse(src)
-	out, err := sysml.AddConnection(src, m, req.Parent, req.Name, req.Source, req.Target)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, err.Error(), m.Diagnostics)
+	visual := req.From != nil || req.To != nil
+	if visual && (req.From == nil || req.To == nil) {
+		writeError(w, http.StatusBadRequest, "both port endpoints are required", nil)
 		return
 	}
-	outModel, err := sysml.ValidateEdit(m, out)
+	expected := r.Header.Get("If-Match")
+	if (visual || expected != "") && expected != revisionOf(src) {
+		writeError(w, http.StatusConflict, "source changed; reopen the model before connecting its ports", nil)
+		return
+	}
+	m := sysml.Parse(src)
+	var out string
+	var outModel *sysml.Model
+	var added string
+	if visual {
+		out, outModel, added, err = sysml.AddPortConnection(src, m, *req.From, *req.To)
+	} else {
+		out, err = sysml.AddConnection(src, m, req.Parent, req.Name, req.Source, req.Target)
+		outModel = m
+		if err == nil {
+			outModel, err = sysml.ValidateEdit(m, out)
+		}
+	}
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error(), outModel.Diagnostics)
 		return
@@ -360,7 +379,9 @@ func (s *Server) handleAddConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, makeFileResponse(name, out))
+	response := makeFileResponse(name, out)
+	response.AddedElementID = added
+	writeJSON(w, http.StatusOK, response)
 }
 
 type addSatisfyRequest struct {

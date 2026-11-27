@@ -6,7 +6,11 @@ import type {
   Revision,
 } from './types'
 
-export const PROJECT_ID = new URLSearchParams(location.search).get('project') || 'workspace'
+import type { DiagramPortConnection } from './diagramConnections'
+
+const selection = new URLSearchParams(location.search)
+export const WORKSPACE_ID = selection.get('workspace') || 'default'
+export const PROJECT_ID = selection.get('project') ?? (WORKSPACE_ID === 'default' ? 'workspace' : '')
 export const API_BASE = `/api/projects/${encodeURIComponent(PROJECT_ID)}`
 
 class ApiError extends Error {
@@ -21,6 +25,7 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (!PROJECT_ID) throw new Error('Choose a project first')
   const res = await fetch(API_BASE + path, {
     ...init,
     headers: {
@@ -37,6 +42,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function listFiles(): Promise<FileInfo[]> {
+  if (!PROJECT_ID) return []
   const data = await request<{ files: FileInfo[] }>('/files')
   return data.files ?? []
 }
@@ -116,6 +122,14 @@ export function addConnection(name: string, conn: NewConnection): Promise<FileRe
   })
 }
 
+export function addPortConnection(name: string, revision: string, connection: DiagramPortConnection): Promise<FileResponse> {
+  return request<FileResponse>(`/files/${encodeURIComponent(name)}/connection`, {
+    method: 'POST',
+    headers: { 'If-Match': revision },
+    body: JSON.stringify(connection),
+  })
+}
+
 export interface NewSatisfy {
   parent: string
   requirement: string
@@ -166,3 +180,25 @@ export function downloadUrl(name: string): string {
 }
 
 export { ApiError }
+
+export function validateNativeFile(name: string, content: string): Promise<import('./types').NativeValidation> {
+  return request(`/files/${encodeURIComponent(name)}/validate-native`, {
+    method: 'POST', body: JSON.stringify({ content }),
+  })
+}
+
+export interface ProjectPalette {
+  revision: string
+  colours: Record<string, string>
+  keywords: Array<{ keyword: string; default: string; fill: string; stroke: string }>
+}
+
+export function getProjectPalette() {
+  return request<ProjectPalette>('/palette')
+}
+
+export function saveProjectPalette(revision: string, colours: Record<string, string>) {
+  return request<ProjectPalette>('/palette', {
+    method: 'PUT', headers: { 'If-Match': revision }, body: JSON.stringify({ version: 1, colours }),
+  })
+}

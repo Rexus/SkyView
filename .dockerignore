@@ -6,7 +6,10 @@ web/dist
 internal/server/dist/assets
 workspace
 samples
-kubernetes
+deployment/caas
+deployment/go
+**/accounts.json
+**/__pycache__
 README.md
 flake.nix
 flake.lock

@@ -26,9 +26,10 @@ type Origin struct {
 	Example    string `json:"example,omitempty"`
 }
 type Manifest struct {
-	Version int    `json:"version"`
-	Name    string `json:"name"`
-	Origin  Origin `json:"origin"`
+	Version     int    `json:"version"`
+	Name        string `json:"name"`
+	Origin      Origin `json:"origin"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
 }
 type Info struct {
 	ID string `json:"id"`

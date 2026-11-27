@@ -1,5 +1,4 @@
 # Starter system
 
-A bundled SkyView example project. Open its `.sysml` file in the model workbench.
-
-Full guides and optional analysis tooling: [Rexus/SkyView documentation](https://github.com/Rexus/SkyView/tree/main/docs).
+Open [the starter model](models/example-model.sysml) to explore parts and connections.
+Choose **Starter system** under **Projects → Examples** to make an editable copy.

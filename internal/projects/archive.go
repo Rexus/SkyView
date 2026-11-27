@@ -180,7 +180,10 @@ func Export(root string, info Info, recursive bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	files[ManifestName], err = json.MarshalIndent(info.Manifest, "", "  ")
+	// Workspace membership belongs to this server, not the portable project.
+	manifest := info.Manifest
+	manifest.WorkspaceID = ""
+	files[ManifestName], err = json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,14 @@ package ProjectWorkspaces {
         and supporting assets beneath one directory. A view is a projection within a project.
         See docs/projects.md for the implementation, limits and checked journeys. */
     private import ScalarValues::*;
+    part def Workspace {
+        doc /* A named workspace groups projects within a server catalog. Existing and configured
+            projects begin in the default workspace; managed project membership can change. */
+        part projects : Project [0..*];
+        attribute projectChoicesMatchWorkspace : Boolean;
+        attribute projectIdentityPreserved : Boolean;
+        attribute workspaceMembershipPersisted : Boolean;
+    }
     part def Project {
         attribute relativePathsPreserved : Boolean;
         attribute outsideRootAccessed : Boolean;
@@ -12,12 +20,12 @@ package ProjectWorkspaces {
         attribute modelsAndViewsExported : Boolean;
     }
     part def Browser {
-        doc /* Choose project, upload ZIP, request a Git snapshot, copy an example, export for review.
+        doc /* Choose a workspace in the header and a project in the Projects panel. Upload ZIP, request a Git snapshot, copy an example, export for review.
             Project switching unloads drafts, diagnostics and undo state after an unsaved-edit check. */
     }
     part def ProjectCatalog {
         doc /* Catalog managed project directories and explicitly configured server-local directories.
-            Legacy flat workspace remains accessible. No arbitrary server paths from browser requests. */
+            Legacy root models remain accessible in the default workspace. No arbitrary server paths from browser requests. */
     }
     part def ProjectStore {
         doc /* Native files remain authoritative; preserve nested relative paths and binary assets.
@@ -52,6 +60,14 @@ package ProjectWorkspaces {
     dependency copyExample from WorkspaceService::examples to WorkspaceService::storage;
     dependency openProject from WorkspaceService::workbench to WorkspaceService::storage;
     package Intent {
+        requirement workspaceSelection {
+            subject workspace : Workspace;
+            doc /* PW-05: Workspace selection shall show only the workspace's projects. Creation,
+                import and assignment shall persist workspace membership. Reassignment shall
+                preserve the project's identity, model paths, file bytes and direct links. */
+            require constraint { workspace.projectChoicesMatchWorkspace and
+                workspace.projectIdentityPreserved and workspace.workspaceMembershipPersisted }
+        }
         requirement portableProject {
             subject project : Project;
             doc /* PW-01: ZIP import/export shall preserve selected source/assets and model-view
@@ -78,6 +94,15 @@ package ProjectWorkspaces {
         }
     }
     package Journeys {
+        use case organizeProjects {
+            subject system : WorkspaceService = service;
+            objective { doc /* Create a workspace, add multiple projects, move a managed project,
+                and switch workspaces to see their distinct project lists. */ }
+        }
+        verification workspaceCatalog {
+            subject workspace : Workspace;
+            objective { verify Intent::workspaceSelection; }
+        }
         use case uploadProject {
             subject system : WorkspaceService = service;
             objective { doc /* Upload a ZIP, choose a contained directory, open a nested model,

@@ -6,8 +6,8 @@ test:go:
   stage: test
   image: golang:1.24
   script:
-    - go test -timeout 90s ./cmd/... ./internal/... ./examples/...
-    - go vet ./cmd/... ./internal/... ./examples/...
+    - go test -timeout 90s . ./cmd/... ./internal/... ./examples/...
+    - go vet . ./cmd/... ./internal/... ./examples/...
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -32,8 +32,8 @@ test:pendulum:
   stage: test
   image: python:3.12-slim
   script:
-    - python -m pip install -r scripts/pendulum/requirements.txt
-    - python scripts/pendulum/run.py
+    - python -m pip install -r examples/inverted-pendulum/simulation/requirements.txt
+    - python examples/inverted-pendulum/simulation/run.py
   artifacts:
     when: always
     paths:
@@ -42,3 +42,22 @@ test:pendulum:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test:sysml:
+  stage: test
+  image: golang:1.24-alpine
+  before_script:
+    - apk add --no-cache openjdk21-jdk
+  script:
+    - go run ./cmd/skyview standards-setup -report bin/sysml-validation/setup.json
+    - SKYVIEW_NATIVE_TESTS=1 go test -timeout 300s ./internal/standards
+    - go run ./cmd/skyview lint -repository -timeout 5m -report bin/sysml-validation/latest.json
+  artifacts:
+    when: always
+    paths:
+      - bin/sysml-validation/
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: '$CI_COMMIT_BRANCH =~ /^codex\//'

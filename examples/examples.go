@@ -10,7 +10,7 @@ import (
 	"github.com/Rexus/SkyView/internal/projects"
 )
 
-//go:embed inspection-drone/* inverted-pendulum/* starter/*
+//go:embed */skyview.project.json */README.md */models
 var content embed.FS
 
 func List() []projects.Info {
@@ -58,7 +58,7 @@ func Files(id string) (map[string][]byte, error) {
 }
 
 func Starter() []byte {
-	data, err := content.ReadFile("starter/example-model.sysml")
+	data, err := content.ReadFile("starter/models/example-model.sysml")
 	if err != nil {
 		panic(err)
 	}

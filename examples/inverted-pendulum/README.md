@@ -1,5 +1,7 @@
 # Inverted pendulum
 
-A bundled SkyView example project. Open its `.sysml` file in the model workbench.
+Open [the native model](models/InvertedPendulum.sysml) or create a copy from **Projects → Examples**.
+The example models a cart on rails, the hinged pendulum, and the controller that swings it up and balances it.
 
-Full guides and optional analysis tooling: [Rexus/SkyView documentation](https://github.com/Rexus/SkyView/tree/main/docs).
+The [example guide](../../docs/pendulum-example.md) explains the control loop and the experiments.
+The runnable Python analysis lives in [simulation](simulation/).

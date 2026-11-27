@@ -148,7 +148,7 @@ func (p *parser) resolveFeature(scope *Element, path string) (*Element, *Element
 func (p *parser) collectReferences() {
 	for _, e := range p.model.Elements {
 		scope := p.model.ByID[e.ParentID]
-		for _, span := range []Span{e.Spans.Type, e.Spans.Specializes, e.SourceSpan, e.TargetSpan, e.RequirementSpan, e.SatisfierSpan} {
+		for _, span := range []Span{e.RedefinitionSpan, e.Spans.Type, e.Spans.Specializes, e.SourceSpan, e.TargetSpan, e.RequirementSpan, e.SatisfierSpan} {
 			p.referencePath(scope, span)
 		}
 	}

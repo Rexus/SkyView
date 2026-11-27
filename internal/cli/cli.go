@@ -16,7 +16,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Rexus/SkyView"
 	"github.com/Rexus/SkyView/internal/projects"
+	"github.com/Rexus/SkyView/internal/standards"
 	"github.com/Rexus/SkyView/internal/sysml"
 	"github.com/Rexus/SkyView/internal/views"
 )
@@ -30,9 +32,44 @@ func Run(args []string, out, errOut io.Writer) int {
 }
 func run(args []string, out, errOut io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("commands: inspect, render, import, export (use -h for flags)")
+		return fmt.Errorf("commands: version, inspect, render, import, export, lint, standards-setup, standards-update, standards-info (use -h for flags)")
 	}
 	cmd := args[0]
+	if cmd == "version" {
+		flags := flag.NewFlagSet("version", flag.ContinueOnError)
+		flags.SetOutput(errOut)
+		asJSON := flags.Bool("json", false, "print build metadata as JSON")
+		if err := flags.Parse(args[1:]); err != nil {
+			if err == flag.ErrHelp {
+				return nil
+			}
+			return err
+		}
+		if flags.NArg() != 0 {
+			return fmt.Errorf("unexpected positional arguments")
+		}
+		info := skyview.Current()
+		if *asJSON {
+			return json.NewEncoder(out).Encode(info)
+		}
+		kind := "Unofficial build"
+		if info.Official {
+			kind = "Official " + info.Channel + " release"
+		}
+		revision := info.Revision
+		if revision == "" {
+			revision = "unknown"
+		}
+		_, err := fmt.Fprintf(out, "SkyView %s (%s)\nSource: %s (%s)\n", info.Version, kind, revision, info.SourceState)
+		return err
+	}
+	if cmd == "standards-version" {
+		fmt.Fprintln(out, standards.Pinned().Version)
+		return nil
+	}
+	if cmd == "standards-setup" || cmd == "standards-update" || cmd == "standards-info" || cmd == "lint" {
+		return runStandards(args, out, errOut)
+	}
 	f := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	f.SetOutput(errOut)
 	in := f.String("in", "", "UTF-8 SysML source file")
@@ -44,6 +81,7 @@ func run(args []string, out, errOut io.Writer) error {
 	project := f.String("project", "", "project ID for import/export; omit for legacy workspace")
 	base := f.String("url", "http://127.0.0.1:8081", "SkyView server URL")
 	check := f.Bool("check", false, "render: fail if the output differs, without writing")
+	palettePath := f.String("palette", "", "optional skyview.palette.json for offline SVG rendering")
 	if err := f.Parse(args[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return nil
@@ -90,6 +128,16 @@ func run(args []string, out, errOut io.Writer) error {
 			if err != nil {
 				return err
 			}
+			if *palettePath != "" {
+				data, err := os.ReadFile(*palettePath)
+				if err != nil {
+					return err
+				}
+				v.Palette, err = views.ParsePalette(data)
+				if err != nil {
+					return err
+				}
+			}
 			svg, err := views.Render(string(b), v)
 			if err != nil {
 				return err
@@ -105,7 +153,7 @@ func run(args []string, out, errOut io.Writer) error {
 				fmt.Fprintln(out, "SVG is current")
 				return nil
 			}
-			if sameFile(*dest, *in) || sameFile(*dest, *config) {
+			if sameFile(*dest, *in) || sameFile(*dest, *config) || (*palettePath != "" && sameFile(*dest, *palettePath)) {
 				return fmt.Errorf("output must not replace its inputs")
 			}
 			if err = os.WriteFile(*dest, svg, 0o644); err != nil {

@@ -40,6 +40,9 @@ type Spans struct {
 
 // Element is one SysML element (package, definition, usage, connection, ...).
 type Element struct {
+	Redefines        string `json:"redefines,omitempty"`
+	RedefinitionSpan Span   `json:"-"`
+	RedefinedID      string `json:"redefinedId,omitempty"`
 	// Expressions remain native source; references are resolved without evaluating them.
 	Expression      string   `json:"expression,omitempty"`
 	ConstraintRole  string   `json:"constraintRole,omitempty"`

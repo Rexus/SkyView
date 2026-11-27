@@ -36,21 +36,30 @@ test('source validation highlights drafts, explains fixes and rejects obsolete r
     const host = document.querySelector('#root')
     root = createRoot(host)
     const requests = []
+    const nativeRequests = []
     let saves = 0
+    let caretElement
     const source = 'package Example {\n  part rover : Vehcle;\n}'
     const from = source.indexOf('Vehcle')
     const diagnostic = { severity: 'warning', message: 'Unresolved type Vehcle',
       range: { start: from, end: from + 6 }, line: 2, column: 16, hint: 'Check the type name.' }
     const props = {
-      file: { name: 'Example.sysml', content: source, revision: 'one', diagnostics: [], elements: [] },
+      file: { name: 'Example.sysml', content: source, revision: 'one', diagnostics: [], model: { elements: [
+        { id: 'rover', kind: 'part', spans: {
+          decl: { start: source.indexOf('part'), end: source.indexOf(';') + 1 },
+          name: { start: source.indexOf('rover'), end: source.indexOf('rover') + 5 },
+        } },
+      ] } },
+      linkedElement: { id: 'rover' }, onCaretElement: id => { caretElement = id },
       jumpLine: null, jumpNonce: 0, saving: false,
       onSave: async () => { saves++ }, onDirtyChange: () => {},
       onOpenHistory: () => {}, onDownload: () => {},
+      onNativeValidate: content => new Promise((resolve, reject) => nativeRequests.push({ content, resolve, reject })),
       onValidate: content => new Promise((resolve, reject) => requests.push({ content, resolve, reject })),
     }
     const pause = ms => act(() => new Promise(resolve => setTimeout(resolve, ms)))
     const validate = async () => {
-      const button = [...host.querySelectorAll('button')].find(b => /^(Validate|Checking…)$/.test(b.textContent.trim()))
+      const button = [...host.querySelectorAll('button')].find(b => /^(Quick check|Checking…)$/.test(b.textContent.trim()))
       await act(async () => button.click())
       await pause(20)
     }
@@ -63,6 +72,7 @@ test('source validation highlights drafts, explains fixes and rejects obsolete r
     }
     await act(async () => root.render(createElement(SourceView, { ...props, key: 'project-one/Example.sysml' })))
     await pause(550)
+    assert.equal(host.querySelector('.cm-linked-declaration')?.textContent, 'rover')
     assert.equal(requests.length, 1, 'initial source is checked automatically')
     assert.equal(requests[0].content, source)
     await act(async () => requests[0].resolve([diagnostic]))
@@ -74,12 +84,16 @@ test('source validation highlights drafts, explains fixes and rejects obsolete r
     const tooltip = host.querySelector('.cm-tooltip-lint')
     assert.match(tooltip?.textContent ?? '', /Unresolved type Vehcle/)
     assert.match(tooltip.textContent, /Suggested fix: Check the type name\./)
-    await act(async () => host.querySelector('.diag-item').click())
+    const overview = host.querySelector('[aria-label="Scrollbar diagnostics"]')
+    assert.match(overview.querySelector('.warning').getAttribute('aria-label'), /Line 2.*Unresolved type Vehcle/)
+    await act(async () => overview.querySelector('.warning').click())
+    assert.equal(caretElement, 'rover')
     let view = EditorView.findFromDOM(host.querySelector('.cm-editor'))
     assert.equal(view.state.selection.main.from, from)
     assert.equal(view.state.selection.main.to, from + 6)
 
     await edit(source.replace('Vehcle', 'Missing'))
+    assert.equal(overview.querySelectorAll('button').length, 0, 'draft edits clear the overview markers')
     await validate()
     assert.equal(requests.length, 2)
     assert.match(requests[1].content, /Missing/, 'validation uses the unsaved draft')
@@ -89,12 +103,12 @@ test('source validation highlights drafts, explains fixes and rejects obsolete r
     await act(async () => requests[2].resolve([]))
     await act(async () => requests[1].resolve([diagnostic]))
     assert.equal(diagnosticCount(view.state), 0, 'a delayed older response cannot restore diagnostics')
-    assert.match(host.querySelector('[role=status]').textContent, /No issues found/)
+    assert.match(host.querySelector('[data-testid=projection-status]').textContent, /No issues found/)
 
     await validate()
     await act(async () => requests[3].reject(new Error('Server disconnected')))
-    assert.match(host.querySelector('[role=status]').textContent, /Validation unavailable: Server disconnected/)
-    assert.doesNotMatch(host.querySelector('[role=status]').textContent, /No issues found/)
+    assert.match(host.querySelector('[data-testid=projection-status]').textContent, /Validation unavailable: Server disconnected/)
+    assert.doesNotMatch(host.querySelector('[data-testid=projection-status]').textContent, /No issues found/)
 
     await validate()
     await act(async () => root.render(createElement(SourceView, { ...props,
@@ -106,6 +120,42 @@ test('source validation highlights drafts, explains fixes and rejects obsolete r
     view = EditorView.findFromDOM(host.querySelector('.cm-editor'))
     assert.equal(view.state.doc.toString(), 'package Second {}')
     assert.equal(diagnosticCount(view.state), 0, 'switching projects discards the previous file result')
+    const nativeButton = () => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === 'Native check')
+    const nativeStatus = () => host.querySelector('[data-testid=native-status]').textContent
+    assert.match(nativeStatus(), /not checked/)
+    const nativeResult = { status: 'passed', release: { release: '2026-09.1', releaseContents: 'Pilot baseline' },
+      sourceSHA256: '0123456789', filesChecked: 2, diagnostics: [] }
+    await act(async () => nativeButton().click())
+    assert.equal(nativeRequests[0].content, 'package Second {}')
+    await act(async () => nativeRequests[0].resolve(nativeResult))
+    assert.match(nativeStatus(), /Official release 2026-09.1: passed.*2 files/)
+    await edit('package Third {}')
+    assert.match(nativeStatus(), /not checked/, 'editing immediately invalidates the native pass')
+    await act(async () => nativeButton().click())
+    await edit('package Fourth {}')
+    await act(async () => nativeRequests[1].resolve(nativeResult))
+    assert.match(nativeStatus(), /not checked/, 'a late native response cannot validate a different draft')
+    await act(async () => nativeButton().click())
+    await act(async () => nativeRequests[2].resolve({ ...nativeResult, status: 'unavailable', error: 'Missing toolchain' }))
+    assert.match(nativeStatus(), /unavailable: Missing toolchain/)
+    assert.doesNotMatch(nativeStatus(), /passed/)
+    await act(async () => nativeButton().click())
+    await act(async () => nativeRequests[3].resolve({ ...nativeResult, status: 'failed', diagnostics: [
+      { ...diagnostic, file: 'Elsewhere.sysml', severity: 'error', source: 'Official SysML pilot' },
+    ] }))
+    assert.match(nativeStatus(), /issues found/)
+    assert.match(host.textContent, /Elsewhere.sysml:2/)
+    assert.equal(diagnosticCount(view.state), 0, 'errors in another file never underline the active document')
+    await pause(40)
+    assert.equal(host.querySelectorAll('.source-overview-marker').length, 0)
+    await act(async () => nativeButton().click())
+    await act(async () => nativeRequests[4].resolve({ ...nativeResult, status: 'failed', diagnostics: [
+      { ...diagnostic, file: 'Example.sysml', line: 1, range: { start: 8, end: 14 }, severity: 'error' },
+    ] }))
+    await pause(40)
+    assert.match(host.querySelector('.source-overview-marker.error')?.getAttribute('aria-label') ?? '', /Line 1/)
+    await act(async () => host.querySelector('.source-overview-marker.error').click())
+    assert.equal(view.state.selection.main.from, 8)
     assert.equal(saves, 0, 'validation never saves source')
     await act(async () => root.unmount())
     root = null

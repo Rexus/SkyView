@@ -6,9 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/Rexus/SkyView/examples"
+	"github.com/Rexus/SkyView/internal/standards"
+	"github.com/Rexus/SkyView/internal/views"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,23 +31,38 @@ type Server struct {
 	projectServers map[string]*Server
 	localProjects  map[string]localProject
 	recursive      bool
+	native         *standards.Runner
 }
 
 // New creates a server rooted at the given workspace directory. If the
 // workspace has no SysML files, the bundled example sample is seeded.
 func New(workspace string) *Server {
-	s := &Server{workspace: workspace, projectServers: map[string]*Server{}, localProjects: map[string]localProject{}}
+	s := newServer(workspace, standards.NewRunner(standards.DefaultHome(), os.Getenv("SKYVIEW_SYSML_JAVA")))
 	if err := s.ensureWorkspace(); err != nil {
 		log.Printf("workspace: %v", err)
 	}
 	return s
 }
 
+func newServer(workspace string, native *standards.Runner) *Server {
+	return &Server{workspace: workspace, native: native, projectServers: map[string]*Server{}, localProjects: map[string]localProject{}}
+}
+
 // Handler returns the application's HTTP handler.
 func (s *Server) Handler() http.Handler {
+	return s.handler(true, "single-user", "local")
+}
+
+func (s *Server) handler(allowCORS bool, mode, account string) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("GET /api/about", aboutHandler(mode, account))
+	mux.HandleFunc("GET /api/standards", s.handleStandardsIdentity)
+	mux.HandleFunc("GET /api/diagram/relationship.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		_, _ = w.Write([]byte(views.RelationshipCSS()))
+	})
 	s.registerFileRoutes(mux)
 	s.registerProjectRoutes(mux)
 
@@ -74,18 +92,20 @@ func (s *Server) Handler() http.Handler {
 		fileServer.ServeHTTP(w, r)
 	})
 
-	return s.withMiddleware(mux)
+	return s.withMiddleware(mux, allowCORS)
 }
 
-func (s *Server) withMiddleware(next http.Handler) http.Handler {
+func (s *Server) withMiddleware(next http.Handler, allowCORS bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
+		if allowCORS {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 		}
 		defer func() {
 			if rec := recover(); rec != nil {

@@ -2,9 +2,13 @@
 
 [Back to SkyView](../README.md) · [Run locally](local-development.md) · [API](api.md)
 
-A project is a directory containing models, their views and supporting files. Grid, Diagram,
-Requirements, Source and Shared views all work on the selected model **inside the selected project**.
-Choose a project in the bar below the main toolbar; use **Projects** to create or import one.
+A workspace groups projects. Choose a **Workspace** in the header, then choose a **Project** in the
+left **Projects** panel. Open **Workspace and project actions** beside the project selector to
+create a workspace, export the current project or move it. The project map lists the project's model
+files. Open its **Model actions** menu to create or import a file, view its history, or delete it.
+
+A project is a directory containing models, saved views and supporting files. Diagram, Grid,
+Requirements and Source work on the model open in that project.
 
 ![SkyView project picker with bundled examples and import options](images/skyview-projects.jpg)
 
@@ -12,6 +16,11 @@ Choose a project in the bar below the main toolbar; use **Projects** to create o
 [Directory format](#directory-format) · [Limits](#limits) · [Verification](#verification)
 
 ## Start a project
+
+Use **Add project** in the selected workspace. You can add several projects and switch among them
+from the project selector. To reassign an existing managed project, open it and choose **Move project**.
+It stays open under the destination workspace with the same model paths, history and direct links.
+Switching workspaces or projects prompts before discarding unsaved edits.
 
 | Option | What happens |
 | --- | --- |
@@ -49,7 +58,7 @@ The operator exposes chosen directories at startup. From the SkyView repository 
 go run ./cmd/skyview -addr 127.0.0.1:8081 -project cart=./examples/inverted-pendulum
 ```
 
-Choose `cart` in the project selector. Repeat `-project NAME=PATH` for more folders. Names use letters,
+Choose `cart` in the **Default workspace** project selector. Repeat `-project NAME=PATH` for more folders. Names use letters,
 digits, dashes or underscores. This opens the actual directory: saves change its files directly,
 including files in an existing Git checkout. Use **Examples** when you want an independent copy.
 The browser cannot request an arbitrary server filesystem path.
@@ -81,7 +90,11 @@ README.md
 ```
 
 `skyview.project.json` version 1 stores a display name and origin (`new`, `example`, `upload` or `git`).
-A managed ID is its directory name; display names may repeat. Imported origin metadata is descriptive
+Workspace names and IDs are stored in `.skyview/workspaces.json` at the server data root. Managed
+projects record their `workspaceId` in the on-disk manifest. A missing ID means **Default workspace**.
+ZIP exports omit the server workspace ID, and imports use the selected destination workspace.
+
+A managed ID is its directory name. Display names may repeat. Imported origin metadata is descriptive
 and grants no access to a path, repository or account. A configured local folder needs no manifest.
 
 Native `.sysml` files own model meaning. [Shared-view sidecars](model-exchange.md) own selections and
@@ -90,8 +103,8 @@ supporting files but omit Git metadata and SkyView's private revision history. T
 snapshots, not complete backups. Back up the whole workspace and any separately configured folders
 while SkyView is stopped to retain history too.
 
-Existing files at the workspace root remain accessible as **Workspace files**, using their original
-paths and history. The old `/api/files` routes and CLI behavior remain supported. Those legacy routes
+Existing files at the server data root remain accessible as **Workspace files** within **Default workspace**,
+using their original paths and history. Server-configured folders also start in **Default workspace**. The old `/api/files` routes and CLI behavior remain supported. Those legacy routes
 list only root-level models; new projects support nested paths. Existing workspace data is not moved.
 The versioned example sources now live under [`examples/`](../examples/) and are embedded in builds.
 
@@ -113,8 +126,8 @@ The versioned example sources now live under [`examples/`](../examples/) and are
 
 ## Verification
 
-The native [project contract](../architecture/models/ProjectWorkspaces.sysml) defines PW-01–PW-04.
-Its complete source passed the official SysML v2 pilot 2026-09.1 parser with standard libraries on
+The native [project contract](../architecture/models/ProjectWorkspaces.sysml) defines PW-01–PW-05.
+Its complete source passed the published SysML v2 pilot 2026-04 checker with standard libraries on
 2026-11-27, with no reported model errors or warnings. The implementation map is in the
 [architecture guide](../architecture/README.md).
 
@@ -124,6 +137,7 @@ Its complete source passed the official SysML v2 pilot 2026-09.1 parser with sta
 | PW-02: confined access, sibling isolation | `TestArchiveBoundaries`, `TestResolveRejectsSymlinks`, `TestLocalFolderAndStateConfinement`, `TestNestedHistoryIsolation`, `TestProjectLifecycle` |
 | PW-03: complete publication only | `TestRejectedImportsPublishNothing`, rejected upload and restart checks in `TestProjectLifecycle` |
 | PW-04: pinned snapshot without remote writes | `TestRepositorySnapshot`: both provider adapters, slash-containing refs, commit-pinned retrieval, host/redirect restrictions |
+| PW-05: workspace selection and project identity | `TestWorkspaceCatalogPreservesProjectIdentityAndPortability`, `web/tests/projects.test.mjs`, and browser checks for creation, grouping, reassignment and unsaved drafts |
 | Example independence and browser lifecycle | `TestBundledExamplesAreIndependent`, `web/tests/projects.test.mjs`, source-editor remount regression |
 
 The built-in browser was used to open the bundled pendulum (194 elements, zero diagnostics, seven
@@ -136,7 +150,7 @@ with Go 1.24 and checked for all three bundled examples, a configured bind-mount
 and project survival after container removal/recreation with the same named volume. Disposable test
 containers and their volume were removed. Podman was not installed for a separate runtime check. GitLab protocol behavior
 is covered by controlled HTTP tests; a live GitLab import has not been checked. These checks establish
-project storage and supported UI behavior, not full SysML language conformance or multi-user isolation.
+project storage and supported UI behavior. For hosted account checks, see the [deployment design](../architecture/README.md#deployment).
 
 ## References
 

@@ -1,107 +1,32 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { CircleAlert } from 'lucide-react'
 import type { SysmlElement } from '../types'
-import { cx, displayName, kindColor, shortKind } from '../utils'
+import type { SceneNode } from '../diagramScene'
+import { cx } from '../utils'
+import { genericHandles } from '../modelDiagramRouting'
 
 export type SysmlNodeData = {
-  element: SysmlElement
-  ports: SysmlElement[]
-  attributes: SysmlElement[]
-  doc: string
-  diagnostics: number
-  selected?: boolean
-  genericSource?: boolean
-  genericTarget?: boolean
+ element: SysmlElement; ports: SysmlElement[]; attributes: SysmlElement[]; doc: string; diagnostics: number
+ selected?: boolean; genericSource?: boolean; genericTarget?: boolean
+ glyph?: SceneNode; viewKey?: string; layoutTarget?: boolean; settingsLabel?: string; onSettings?: (key: string) => void
 }
-
 export type SysmlFlowNode = Node<SysmlNodeData, 'sysml'>
-
-export default function SysmlNode({ data }: NodeProps<SysmlFlowNode>) {
-  const { element, ports, attributes, doc, diagnostics, selected } = data
-  const color = kindColor(element)
-  return (
-    <div
-      className={cx('sysml-node', selected && 'selected', diagnostics > 0 && 'has-error')}
-      style={{ ['--kind-color' as string]: color }}
-    >
-      <div className="sysml-node-head">
-        <span className="kind-dot" />
-        <span className="node-name" title={displayName(element)}>
-          {displayName(element)}
-        </span>
-        <span className="node-kind">{element.isDef ? 'def' : element.kind}</span>
-      </div>
-      {element.type && (
-        <div className="sysml-node-type" title={element.type}>
-          <span className="arrow">:</span>
-          {element.type}
-        </div>
-      )}
-      {doc && (
-        <div className="sysml-node-compartment sysml-node-doc" title={doc}>
-          <div className="compartment-label">doc</div>
-          <div className="compartment-doc">{doc}</div>
-        </div>
-      )}
-      {attributes.length > 0 && (
-        <div className="sysml-node-compartment">
-          <div className="compartment-label">attributes</div>
-          {attributes.slice(0, 4).map((attr) => (
-            <div className="compartment-row" key={attr.id} title={`${attr.name}${attr.type ? ` : ${attr.type}` : ''}${attr.value ? ` = ${attr.value}` : ''}`}>
-              <span className="compartment-name">{attr.name}</span>
-              {attr.type && <span className="compartment-type">: {attr.type}</span>}
-              {attr.value && <span className="compartment-value">= {attr.value}</span>}
-            </div>
-          ))}
-          {attributes.length > 4 && (
-            <div className="compartment-more">+{attributes.length - 4} more</div>
-          )}
-        </div>
-      )}
-      {ports.length > 0 ? (
-        <div className="sysml-node-ports">
-          {ports.map((port) => (
-            <div className="port-row" key={port.id}>
-              <Handle type="target" position={Position.Left} id={`${port.id}-in`} />
-              <span className="port-dot" />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {port.name}
-              </span>
-              <span className="port-type">{port.type || 'port'}</span>
-              <Handle type="source" position={Position.Right} id={`${port.id}-out`} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="sysml-node-empty">no ports</div>
-      )}
-      {data.genericTarget && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          id={`${element.id}-generic-in`}
-          isConnectable={false}
-          style={{ top: '50%', background: 'var(--accent-2)' }}
-        />
-      )}
-      {data.genericSource && (
-        <Handle
-          type="source"
-          position={Position.Right}
-          id={`${element.id}-generic-out`}
-          isConnectable={false}
-          style={{ top: '50%', background: 'var(--accent-2)' }}
-        />
-      )}
-      <div className="sysml-node-foot">
-        {diagnostics > 0 && <CircleAlert size={10} style={{ color: 'var(--warning)' }} />}
-        <span>{shortKind(element)}</span>
-        {element.specializes && (
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            · specializes {element.specializes}
-          </span>
-        )}
-      </div>
-    </div>
-  )
+/** The engine's drawing is a glyph of this native node, not a diagram image.
+ * Selection, dragging, ports, source inspection and nesting belong to ReactFlow. */
+export function GlyphNode({ data, selected, annotation = false }: { data: Partial<SysmlNodeData>; selected?: boolean; annotation?: boolean }) {
+ const glyph = data.glyph
+ if (!glyph) return <div className="native-node-loading" role="status">Loading element…</div>
+ const element = data.element
+ return <div className={cx('native-diagram-node', (selected || data.selected) && 'selected', annotation && 'annotation')}
+  data-layout-target={data.layoutTarget || undefined} data-native-id={element?.id} data-view-key={data.viewKey || glyph.key} style={{width:glyph.width,height:glyph.height}} title={element?.qname || data.settingsLabel}>
+  <div className="node-glyph" dangerouslySetInnerHTML={{__html:glyph.svg}} />
+  {!annotation && glyph.ports.map(port => <span key={port.id}>
+   <Handle type="target" position={Position.Left} id={`${port.id}-in`} isConnectable={element?.kind === "part" && !element.isDef} title={`${port.name} : ${port.type}`} style={{top:port.y}} />
+   <Handle type="source" position={Position.Right} id={`${port.id}-out`} isConnectable={element?.kind === "part" && !element.isDef} title={`${port.name} : ${port.type}`} style={{top:port.y}} />
+  </span>)}
+  {!annotation && element && genericHandles(element.id).map(({ id, type, side }) =>
+   <Handle key={id} id={id} type={type} position={side as Position} isConnectable={false} className="generic-handle" />,
+  )}
+  {data.onSettings && <button className="node-settings nodrag nopan" aria-label={`Settings for ${data.settingsLabel || glyph.key}`} onClick={event => {event.stopPropagation();data.onSettings?.(glyph.key)}}>⚙</button>}
+ </div>
 }
+export default function SysmlNode({data,selected}: NodeProps<SysmlFlowNode>) { return <GlyphNode data={data} selected={selected} /> }

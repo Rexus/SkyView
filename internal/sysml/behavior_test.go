@@ -8,7 +8,7 @@ import (
 
 func loadDrone(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile("../../examples/inspection-drone/InspectionDrone.sysml")
+	b, err := os.ReadFile("../../examples/inspection-drone/models/InspectionDrone.sysml")
 	if err != nil {
 		t.Fatal(err)
 	}

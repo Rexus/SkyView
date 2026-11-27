@@ -1,0 +1,13 @@
+/* React Flow's drag and connection classes reflect the actions enabled on the canvas. */
+.diagram-workspace .react-flow__node.draggable {
+  cursor: move;
+}
+
+.diagram-workspace .react-flow__node.draggable.dragging,
+.diagram-workspace .react-flow:has(.react-flow__node.dragging) .react-flow__pane {
+  cursor: grabbing;
+}
+
+.diagram-workspace .react-flow__pane.selection {
+  cursor: crosshair;
+}

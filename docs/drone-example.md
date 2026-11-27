@@ -1,6 +1,6 @@
 # Explore the inspection drone
 
-[Back to SkyView](../README.md) · [Native model](../examples/inspection-drone/InspectionDrone.sysml)
+[Back to SkyView](../README.md) · [Native model](../examples/inspection-drone/models/InspectionDrone.sysml)
 
 This fictional inspection quadcopter is a small, connected example for exploring SkyView and finding
 gaps in its SysML v2 support. A pilot uploads a waypoint mission, the vehicle captures an image, and
@@ -20,9 +20,9 @@ See [projects](projects.md) to upload a directory, import a repository or export
 2. Switch to **Containment** to explore ownership. Select **InspectionDrone::InspectionSystem** for
    the ground station, drone and external pilot role. The current diagram does not distinguish
    reference ownership graphically; `ref part pilot` is an external role in the source.
-3. Open **Requirements**. The four obligations have satisfaction links to the drone. **Matrix** shows
-   those assertions and native required constraints. Planned verification links open the test intent;
-   **no test results are recorded**.
+3. Open **Requirements**. The four obligations have satisfaction links to the drone. Use **Columns**
+   to show **Satisfaction assertions** beside the required constraints. Select a planned verification
+   link to inspect the test intent. This example records verification plans.
 4. Use **Grid** or the outline to inspect `Mission` and `Verification`. Select a message for its payload
    and resolved event endpoints, a constraint for its expression, or a verification reference for its
    target. Use **Source** for behavior edits that have no structured editor.
@@ -59,8 +59,10 @@ synchronous calls or execution timing. Edit the `.sysml` source and regenerate t
 
 Checked on 2026-11-27 after the parser fix. The model is unchanged (SHA-256 prefix `6ca56097`):
 
-- The complete file and standard-library references pass the official SysML v2 pilot **2026-09.1**,
-  kernel **0.63.1**, with its bundled `sysml.library`, using Java 21 [4–6]. Native review covered
+- The complete project passes the published **2026-04** baseline, kernel **0.59.0**, using Java 21.
+  It has no project errors; two inherited official-library findings remain visible separately.
+  See the [current validation record](sysml-validation.json) and [checking policy](standards.md).
+  Native review covered
   definition/usage ownership, directed port payloads, participant bindings, message ordering,
   requirement subjects, quantity typing and verification targets.
 - An isolated negative copy with a nonexistent camera type is rejected by the native validator,
@@ -98,23 +100,25 @@ editing path has passed:
 | Break a connection endpoint on the copy | A diagnostic appears; restore the source and revalidate |
 | Change a message endpoint or ordering | Native validation and regenerated preview reflect the change |
 
-Revalidate the complete model with a native validator after edits. SkyView's checks are a bounded
-projection, not a replacement for native SysML syntax, typing and semantic validation. Unsupported
+Revalidate the complete model with **Native check** or the [CLI gate](standards.md) after edits.
+SkyView's **Quick check** remains a bounded rendering projection. Unsupported
 structured field operations are disabled; the full native source remains available for editing.
 
 ## Regenerate the sequence preview
 
-Optional tooling: Java 21, Python 3.10 or later, and the official **0.63.1 Jupyter kernel distribution**
-with its standard libraries [5]. These are not dependencies for running SkyView.
-Set `SYSML_JAVA` to the Java executable, `SYSML_KERNEL` to `jupyter-sysml-kernel-0.63.1-all.jar`, and
-`SYSML_LIBRARY` to that distribution's `sysml.library` directory.
+Use JDK 21+, Python 3.10+ and the [pinned toolchain setup](standards.md#run-locally).
+Run `go run ./cmd/skyview standards-setup` first. Set `SYSML_JAVA` to the Java executable,
+`SYSML_KERNEL` to the installed `kernel.jar`, and `SYSML_LIBRARY` to the installed `sysml.library`.
+The default toolchain directory is `~/.cache/skyview/sysml/2026-04` on Linux/WSL or
+`%LOCALAPPDATA%/skyview/sysml/2026-04` on Windows; `SKYVIEW_SYSML_HOME` can override it.
+These preview tools are optional; the same pinned checker is used by **Native check** and CI.
 
 From the repository root in PowerShell:
 
 ```powershell
-& $env:SYSML_JAVA -cp $env:SYSML_KERNEL scripts/ExportSysML.java $env:SYSML_LIBRARY examples/inspection-drone/InspectionDrone.sysml InspectionDrone bin/drone-native.json
+& $env:SYSML_JAVA -cp $env:SYSML_KERNEL scripts/ExportSysML.java $env:SYSML_LIBRARY examples/inspection-drone/models/InspectionDrone.sysml InspectionDrone bin/drone-native.json
 if ($LASTEXITCODE -ne 0) { throw 'Native SysML validation failed' }
-python scripts/render-drone-sequence.py bin/drone-native.json docs/images/drone-sequence.svg
+python examples/inspection-drone/tools/render-sequence.py bin/drone-native.json docs/images/drone-sequence.svg
 ```
 
 `ExportSysML.java` delegates parsing, library resolution and export to the official implementation.
@@ -123,10 +127,14 @@ three-participant scenario and rejects branching, cycles, missing order and self
 of guessing a picture. The SVG uses explicit colors and system fonts and needs no modeling server.
 The generated preview was checked locally; GitHub rendering has not yet been checked after publication.
 
-To refresh the README screenshot, use **Diagram → InspectionDrone::Drone → Interconnection**,
-auto-layout, and adjust zoom/pan until all five nodes are visible. Capture the actual application
-viewport to `docs/images/skyview-drone.jpg`; preserve visible diagnostics. The image was
-captured in Codex's built-in browser at its default 1280 × 720 viewport.
+## README screenshot
+
+To refresh the README screenshot, open the bundled Inspection Drone example in light mode and
+choose **Diagram → InspectionDrone::Drone → Interconnection**. Use **Fit diagram to window** to
+show all five nodes. Space the cards for readable labels. Capture the application viewport to `docs/images/skyview-drone.jpg`, including
+the footer and its diagnostics. Update the README caption with the capture date, app version and
+revision from **Copy build report**. Identify the recorded revision as the base revision if the
+build contains uncommitted changes.
 
 ## References
 
@@ -134,5 +142,5 @@ captured in Codex's built-in browser at its default 1280 × 720 viewport.
 2. PX4, [Return mode](https://docs.px4.io/main/en/flight_modes_mc/return): recovery behavior context.
 3. PX4, [Safety configuration](https://docs.px4.io/main/en/config/safety): battery and ground-link failsafe concepts.
 4. OMG, [SysML 2.0 language](https://www.omg.org/spec/SysML/2.0/Language/PDF): language authority.
-5. Systems Modeling, [SysML v2 pilot release 2026-09.1](https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation/releases/tag/2026-09.1): validator and bundled libraries.
+5. Systems Modeling, [SysML v2 pilot release 2026-04](https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation/releases/tag/2026-04): validator and bundled libraries.
 6. Systems Modeling, [official training examples](https://github.com/Systems-Modeling/SysML-v2-Release/tree/master/sysml/src/training): ports, occurrences, requirements, use cases and verification syntax. The drone model is original example content; external examples are not vendored.

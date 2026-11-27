@@ -49,8 +49,9 @@ SkyView does not split a combined model back into its original repository files 
 ## Share one repeatable view
 
 A versioned JSON sidecar owns **selection and layout only**. Nodes and edges refer to unambiguous
-native short names, or fully qualified names as shown in the parsed model. Labels and relationship
-meaning come from `.sysml`. A short name must be unique across the imported bundle to select by it.
+native short names, or fully qualified names as shown in the parsed model. Relationship meaning
+and labels come from `.sysml`. A short name must be unique across the imported bundle
+to select by it.
 
 ```json
 {
@@ -84,15 +85,19 @@ Changing coordinates does not create model parts or relationships.
 ```
 
 The workspace stores the sidecar as `Model.views.json`, beside `Model.sysml`. Commit both inputs
-in their owning repository; copy or import both on another machine. In SkyView open **Shared views**.
+in their owning repository; copy or import both on another machine. In SkyView open **Diagram** and pick a saved diagram from **Diagram view**.
 The selected view is shareable at `/?file=Model.sysml&view=system-overall`. The recipient needs that
-same model and sidecar in their server workspace. **Download SVG** uses the same bytes as CLI render.
-The normal Diagram tab remains the interactive automatic layout; it is not this published selection.
+same model and sidecar in their server workspace. **Download SVG** uses the same bytes as CLI render
+when both use the same project palette. Pass `-palette /path/to/skyview.palette.json` to render
+with the colours saved under **Settings → Language colours**.
+Use [boundary controls and shared presentation](shared-presentation.md) to edit saved layouts,
+colours and local arrangement settings. **Diagram → Model diagram** retains its existing automatic layout behavior.
 
 The renderer rejects unknown/ambiguous selections, mismatched or reversed dependency endpoints,
 overlapping boxes and detached/non-orthogonal edge routes. Invalid selections return an error rather
-than an old diagram. Version 1 pins the renderer's logical-design palette and text style; no browser
-layout engine or remote assets are needed. Output metadata records source and view hashes.
+than an old diagram. Both sidecar versions use the native notation and project-wide keyword colours.
+The offline renderer uses the built-in palette when no palette is provided. Output metadata records
+source and view hashes.
 
 ## Automate checks
 
@@ -119,12 +124,13 @@ integration is exercised there without copying its semantic source into this rep
 - Source exchange accepts UTF-8 files up to 16 MiB; assemble cross-file imports with the project's
   native build first. SkyView does not load the complete SysML standard library or resolve an arbitrary
   multi-file project itself.
-- Shared rendering currently supports part/package boxes and binary dependency arrows. Other
-  language elements remain in source; they are not silently substituted with invented diagram elements.
-- Use cases, functions, sequences, verification, ports/connectors, nesting and tier/zone annotations
-  are not yet implemented by this shared renderer. Existing project SVGs remain the reader path.
-- Shared-view editing is through reviewed JSON today, not drag-and-drop persistence. The sidecar is
-  stored separately from the source; import validates it before source creation and reports a partial
-  publication if the subsequent sidecar write fails. Exporting a live changing model is not a transaction.
+- Version 1 retains flat part/package boxes and dependencies. Version 2 adds selected native nesting,
+  items, projected flows/connections, styles and tier/zone annotation boxes. See
+  [supported fields and notation](shared-presentation.md#portable-format).
+- Use cases, functions, sequences, independent port symbols and verification notation are not yet
+  implemented by this shared renderer. Existing project SVGs remain the reader path for those concerns.
+- Shared views support dragging, boundary controls and validated save/revert. Sidecars remain separate
+  from source; import validates before source creation and reports a partial publication if the
+  subsequent sidecar write fails. Exporting a changing model is not a transaction.
 - Pin a SkyView commit/release for repeatable automation. Changing the renderer version may intentionally
   change SVG bytes; review and regenerate outputs together. No automatic deployment is enabled.

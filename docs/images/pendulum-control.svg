@@ -29,7 +29,7 @@ z
   </g>
   <g id="axes_1">
    <g id="InvertedPendulum::ControlLoop::controller">
-    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+    <a xlink:href="../../examples/inverted-pendulum/models/InvertedPendulum.sysml" target="_blank">
      <path d="M 21.282282 320.468327 
 L 191.384758 320.468327 
 Q 197.743729 320.468327 197.743729 314.69618 
@@ -44,7 +44,7 @@ z
     </a>
    </g>
    <g id="InvertedPendulum::ControlLoop::actuator">
-    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+    <a xlink:href="../../examples/inverted-pendulum/models/InvertedPendulum.sysml" target="_blank">
      <path d="M 259.743697 320.468327 
 L 429.846174 320.468327 
 Q 436.205145 320.468327 436.205145 314.69618 
@@ -59,7 +59,7 @@ z
     </a>
    </g>
    <g id="InvertedPendulum::ControlLoop::sum">
-    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+    <a xlink:href="../../examples/inverted-pendulum/models/InvertedPendulum.sysml" target="_blank">
      <path d="M 498.205113 320.468327 
 L 668.307589 320.468327 
 Q 674.66656 320.468327 674.66656 314.69618 
@@ -74,7 +74,7 @@ z
     </a>
    </g>
    <g id="InvertedPendulum::ControlLoop::plant">
-    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+    <a xlink:href="../../examples/inverted-pendulum/models/InvertedPendulum.sysml" target="_blank">
      <path d="M 736.666528 320.468327 
 L 906.769004 320.468327 
 Q 913.127975 320.468327 913.127975 314.69618 
@@ -89,7 +89,7 @@ z
     </a>
    </g>
    <g id="InvertedPendulum::ControlLoop::encoders">
-    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+    <a xlink:href="../../examples/inverted-pendulum/models/InvertedPendulum.sysml" target="_blank">
      <path d="M 736.666528 479.202371 
 L 906.769004 479.202371 
 Q 913.127975 479.202371 913.127975 473.430224 
@@ -104,7 +104,7 @@ z
     </a>
    </g>
    <g id="InvertedPendulum::ControlLoop::estimator">
-    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+    <a xlink:href="../../examples/inverted-pendulum/models/InvertedPendulum.sysml" target="_blank">
      <path d="M 259.743697 479.202371 
 L 429.846174 479.202371 
 Q 436.205145 479.202371 436.205145 473.430224 
@@ -119,7 +119,7 @@ z
     </a>
    </g>
    <g id="InvertedPendulum::ControlLoop::disturbance">
-    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+    <a xlink:href="../../examples/inverted-pendulum/models/InvertedPendulum.sysml" target="_blank">
      <path d="M 498.205113 154.5191 
 L 668.307589 154.5191 
 Q 674.66656 154.5191 674.66656 148.746953 

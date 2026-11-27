@@ -1,20 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Background,
-  BackgroundVariant,
-  Controls,
-  MarkerType,
-  MiniMap,
-  ReactFlow,
   useEdgesState,
   useNodesState,
   type Connection,
   type Edge,
   type Node,
 } from '@xyflow/react'
-import dagre from 'dagre'
-import { Link2, Plus, StickyNote, Wand2 } from 'lucide-react'
-import { getLayout, putLayout } from '../api'
+import { layoutFlow } from '../flowLayout'
+import { canPlaceElement, type DropPosition } from '../elementDrag'
+import { visibleOwner } from '../sourceNavigation'
+import { routeModelEdges } from '../modelDiagramRouting'
+import { Link2, Plus, Wand2 } from 'lucide-react'
+import { API_BASE, getLayout, putLayout } from '../api'
 import type {
   DiagramMode,
   DiagramNote,
@@ -34,29 +31,38 @@ import {
   diagramScopes,
   docFor,
   kindColor,
-  plural,
   portsOf,
 } from '../utils'
-import SysmlNode, { type SysmlNodeData } from './SysmlNode'
-import NoteNode, { type NoteFlowNode } from './NoteNode'
+import type { SysmlNodeData } from './SysmlNode'
+import type { SceneNode } from '../diagramScene'
+import DiagramCanvas from './DiagramCanvas'
+import ActionMenu from './ActionMenu'
+import { connectModelPorts, type AddDiagramConnection } from '../diagramConnections'
+import { type NoteFlowNode } from './NoteNode'
 
 type SysmlFlowNode = Node<SysmlNodeData, 'sysml'>
 type DiagramFlowNode = SysmlFlowNode | NoteFlowNode
 
-const nodeTypes = { sysml: SysmlNode, note: NoteNode }
+
 
 interface Props {
+  split?: boolean
+  navigation?: ReactNode
+  requestedScope?: { element: string }
+  onOpenElementDiagram?: (id: string) => void
+  paletteRevision?: string
   file: FileResponse
   selectedId: string | null
   onSelect: (id: string) => void
   onAddElement: (parent?: string) => void
-  onAddConnection: (conn: { parent: string; name?: string; source: string; target: string }) => Promise<void>
+  onAddConnection: AddDiagramConnection
+  onNotice?: (message: string) => void
   onOpenAddConnection: (parent?: string) => void
   onShowInSource: (line: number) => void
 }
 
 interface EdgeData {
-  connection: SysmlElement
+  connection?: SysmlElement
   [key: string]: unknown
 }
 
@@ -66,7 +72,7 @@ const NOTE_H = 170
 const LAYOUT_VERSION = 3
 
 function isDiagramNode(el: SysmlElement): boolean {
-  return !['port', 'attribute', 'connection', 'satisfy', 'dependency', 'message', 'succession', 'first', 'verify', 'constraint', 'entry', 'root'].includes(el.kind)
+  return !['port', 'attribute', 'connection', 'flow', 'satisfy', 'dependency', 'message', 'succession', 'first', 'verify', 'constraint', 'entry', 'root'].includes(el.kind)
 }
 
 function estimateHeight(
@@ -94,79 +100,22 @@ function computeLayout(
     ports: SysmlElement[]
     attributes: SysmlElement[]
     doc: string
+    height?: number
+    width?: number
   }>,
   edges: Array<{ source: string; target: string }>,
   mode: DiagramMode,
 ): Record<string, { x: number; y: number }> {
-  const positions: Record<string, { x: number; y: number }> = {}
-  if (nodes.length === 0) return positions
-
-  const g = new dagre.graphlib.Graph()
-  g.setGraph({
-    rankdir: mode === 'interconnection' ? 'LR' : 'TB',
-    nodesep: mode === 'interconnection' ? 64 : 44,
-    ranksep: mode === 'interconnection' ? 110 : 82,
-    marginx: 48,
-    marginy: 48,
-  })
-  g.setDefaultEdgeLabel(() => ({}))
-
-  for (const n of nodes) {
-    g.setNode(n.id, {
-      width: NODE_W,
-      height: estimateHeight(n.element, n.ports.length, n.attributes.length, n.doc),
-    })
-  }
-  for (const e of edges) {
-    if (g.hasNode(e.source) && g.hasNode(e.target)) g.setEdge(e.source, e.target)
-  }
-  dagre.layout(g)
-
-  for (const n of nodes) {
-    const p = g.node(n.id)
-    if (p) {
-      positions[n.id] = {
-        x: Math.round(p.x - NODE_W / 2),
-        y: Math.round(p.y - p.height / 2),
-      }
-    }
-  }
-
-  // Dagre can place connected nodes in the same rank closer than their real
-  // rendered height (especially now that nodes carry doc/attribute
-  // compartments). Resolve any residual overlaps by pushing the lower node
-  // down, preserving the left-to-right structure.
-  const boxes = nodes
-    .filter((n) => positions[n.id])
-    .map((n) => ({
-      id: n.id,
-      x: positions[n.id].x,
-      y: positions[n.id].y,
-      w: NODE_W,
-      h: estimateHeight(n.element, n.ports.length, n.attributes.length, n.doc),
-    }))
-  const gap = 24
-  for (let iter = 0; iter < 40; iter++) {
-    let moved = false
-    for (let i = 0; i < boxes.length; i++) {
-      for (let j = i + 1; j < boxes.length; j++) {
-        const a = boxes[i]
-        const b = boxes[j]
-        const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
-        const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
-        if (overlapX > 0 && overlapY > 0) {
-          const lower = a.y >= b.y ? a : b
-          lower.y += overlapY + gap
-          moved = true
-        }
-      }
-    }
-    if (!moved) break
-  }
-  for (const box of boxes) {
-    positions[box.id] = { x: Math.round(box.x), y: Math.round(box.y) }
-  }
-  return positions
+  const sized = nodes.map(node => ({
+    id: node.id,
+    width: node.width ?? NODE_W,
+    height: node.height ?? estimateHeight(node.element, node.ports.length, node.attributes.length, node.doc),
+  }))
+  const direction = mode === 'interconnection' ? 'LR' : 'TB'
+  const positions = layoutFlow(sized, edges, direction, 48, 84)
+  return Object.fromEntries(Object.entries(positions).map(([id, position]) => [
+    id, { x: position.x + 48, y: position.y + 48 },
+  ]))
 }
 
 function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
@@ -178,7 +127,7 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
       if (isDiagramNode(child)) nodeEls.push(child)
     }
     for (const child of childrenOf(model, scope.id)) {
-      if (child.kind === 'connection') edgeEls.push(child)
+      if (['connection', 'flow', 'dependency'].includes(child.kind)) edgeEls.push(child)
     }
   } else {
     nodeEls.push(scope)
@@ -208,31 +157,31 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
 
   if (mode === 'interconnection') {
     for (const conn of edgeEls) {
-      if (!conn.sourceNodeId || !conn.targetNodeId) continue
-      if (!nodeIds.has(conn.sourceNodeId) || !nodeIds.has(conn.targetNodeId)) continue
+      const source = conn.sourceNodeId || conn.sourceId
+      const target = conn.targetNodeId || conn.targetId
+      if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) continue
       const sourcePort = byId(model, conn.sourceId)
       const targetPort = byId(model, conn.targetId)
       const sourceMatch = sourcePort
-        ? portsByNode.get(conn.sourceNodeId)?.find((p) => p.name === sourcePort.name)
+        ? portsByNode.get(source)?.find((p) => p.id === sourcePort.id)
         : undefined
       const targetMatch = targetPort
-        ? portsByNode.get(conn.targetNodeId)?.find((p) => p.name === targetPort.name)
+        ? portsByNode.get(target)?.find((p) => p.id === targetPort.id)
         : undefined
-      edgePairs.push({ source: conn.sourceNodeId, target: conn.targetNodeId })
+      const name = conn.kind === 'connection' && conn.spans.name.start === conn.spans.name.end
+        ? conn.shortName : conn.name
+      const label = [name, !sourceMatch && sourcePort?.kind === 'port' && conn.source,
+        !targetMatch && targetPort?.kind === 'port' && conn.target].filter(Boolean).join(' · ')
+      edgePairs.push({ source, target })
       edges.push({
         id: conn.id,
-        source: conn.sourceNodeId,
-        target: conn.targetNodeId,
-        sourceHandle: sourceMatch ? `${sourceMatch.id}-out` : `${conn.sourceNodeId}-generic-out`,
-        targetHandle: targetMatch ? `${targetMatch.id}-in` : `${conn.targetNodeId}-generic-in`,
-        type: 'smoothstep',
-        label: conn.name,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-        labelStyle: { fill: 'var(--text-muted)', fontSize: 9 },
-        labelBgStyle: { fill: 'var(--bg-elev)', fillOpacity: 0.9 },
-        labelBgPadding: [4, 2],
-        labelBgBorderRadius: 4,
-        data: { connection: conn },
+        source,
+        target,
+        sourceHandle: sourceMatch ? `${sourceMatch.id}-out` : `${source}-generic-out`,
+        targetHandle: targetMatch ? `${targetMatch.id}-in` : `${target}-generic-in`,
+        type: 'relationship',
+        label,
+        data: { connection: conn, kind: conn.kind },
       })
     }
   } else {
@@ -243,9 +192,8 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
         id: `contain-${child.id}`,
         source: scope.id,
         target: child.id,
-        type: 'smoothstep',
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-        style: { stroke: 'var(--border-strong)', strokeDasharray: '4 4' },
+        type: 'relationship',
+        data: { kind: 'containment' },
       })
     }
   }
@@ -254,24 +202,45 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
 }
 
 export default function DiagramView({
-  file,
+  split,
+  navigation,
+  requestedScope,
+  onOpenElementDiagram,
+  paletteRevision, file,
   selectedId,
   onSelect,
   onAddElement,
   onAddConnection,
   onOpenAddConnection,
+  onNotice,
 }: Props) {
   const model = file.model
+  const [glyphs, setGlyphs] = useState<Record<string, SceneNode>>({})
+  const [glyphError, setGlyphError] = useState('')
+  useEffect(() => {
+    const stop = new AbortController();setGlyphError('')
+    fetch(`${API_BASE}/files/${encodeURIComponent(file.name)}/diagram/nodes`, {signal:stop.signal,headers:{'If-Match':file.revision}})
+      .then(async response => { if (!response.ok) throw new Error((await response.json()).error || 'Could not draw model elements'); return response.json() })
+      .then(value => {if (!stop.signal.aborted) setGlyphs(value)})
+      .catch(error => {if (!stop.signal.aborted) setGlyphError(error.message)})
+    return () => stop.abort()
+  }, [file.name,file.revision,paletteRevision])
   const [mode, setMode] = useState<DiagramMode>('interconnection')
   const [scopeId, setScopeId] = useState('')
   const [layout, setLayout] = useState<LayoutFile>({})
   const [layoutLoaded, setLayoutLoaded] = useState(false)
+  const [fitRevision, setFitRevision] = useState(0)
   const [nodes, setNodes, onNodesChange] = useNodesState<DiagramFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const nodesRef = useRef<DiagramFlowNode[]>([])
   nodesRef.current = nodes
 
-  const scopes = useMemo(() => diagramScopes(model), [model])
+  const scopes = useMemo(() => {
+    const scopes = diagramScopes(model)
+    const requested = byId(model, requestedScope?.element)
+    if (requested?.kind === 'part' && !scopes.some(item => item.id === requested.id)) return [...scopes, requested]
+    return scopes
+  }, [model, requestedScope])
   const scope = useMemo(() => byId(model, scopeId), [model, scopeId])
 
   // Initialise scope/mode for a newly opened file.
@@ -284,6 +253,14 @@ export default function DiagramView({
     setMode(hasConnections ? 'interconnection' : 'containment')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file.name])
+
+  useEffect(() => {
+    if (!requestedScope || !scopes.some(item => item.id === requestedScope.element)) return
+    setScopeId(requestedScope.element)
+    const hasRelationships = model.elements.some(item => item.parentId === requestedScope.element &&
+      ['connection', 'flow', 'dependency'].includes(item.kind))
+    setMode(hasRelationships ? 'interconnection' : 'containment')
+  }, [requestedScope, scopes, model])
 
   useEffect(() => {
     let cancelled = false
@@ -308,8 +285,9 @@ export default function DiagramView({
 
   const graph = useMemo(() => {
     if (!scope) return { nodes: [], edges: [], edgePairs: [] }
-    return buildGraph(model, scope, mode)
-  }, [model, scope, mode])
+    const result = buildGraph(model, scope, mode)
+    return {...result,nodes:result.nodes.map(node => ({...node,height:glyphs[node.id]?.height,width:glyphs[node.id]?.width}))}
+  }, [model, scope, mode, glyphs])
 
   const persistNotes = useCallback(
     (notes: Record<string, DiagramNote>) => {
@@ -424,6 +402,26 @@ export default function DiagramView({
     findNotePosition,
   ])
 
+  const highlightedId = useMemo(
+    () => visibleOwner(model, selectedId, new Set(graph.nodes.map(node => node.id))),
+    [model, selectedId, graph.nodes],
+  )
+
+  const positions = useMemo(() => {
+    const saved = layout.version === LAYOUT_VERSION && scope ? layout.scopes?.[scope.id]?.[mode] : undefined
+    if (saved && graph.nodes.every(node => saved[node.id])) return saved
+    // Keep known positions while the shared layout supplies newly added nodes.
+    return { ...computeLayout(graph.nodes, graph.edgePairs, mode), ...saved }
+  }, [graph, layout.scopes, layout.version, scope?.id, mode])
+
+  const routedEdges = useMemo(() => {
+    const boxes = graph.nodes.flatMap(node => {
+      const glyph = glyphs[node.id], position = positions[node.id]
+      return glyph && position ? [[node.id, { ...position, width: glyph.width, height: glyph.height, glyph }]] as const : []
+    })
+    return routeModelEdges(graph.edges, new Map(boxes))
+  }, [graph, glyphs, positions])
+
   // Rebuild React Flow nodes whenever the graph or saved layout changes.
   useEffect(() => {
     if (!scope) {
@@ -431,16 +429,6 @@ export default function DiagramView({
       setEdges([])
       return
     }
-    const saved =
-      layout.version === LAYOUT_VERSION ? layout.scopes?.[scope.id]?.[mode] : undefined
-    const allSaved = saved && graph.nodes.every((n) => saved[n.id])
-    const computed = computeLayout(graph.nodes, graph.edgePairs, mode)
-    // Keep the user's arrangement for known nodes; only place newly added
-    // nodes with dagre instead of re-laying out the whole diagram.
-    const positions = allSaved
-      ? (saved as Record<string, { x: number; y: number }>)
-      : { ...computed, ...(saved ?? {}) }
-
     const genericSources = new Set<string>()
     const genericTargets = new Set<string>()
     for (const e of graph.edges) {
@@ -457,12 +445,13 @@ export default function DiagramView({
       type: 'sysml',
       position: positions[n.id] ?? { x: 0, y: 0 },
       data: {
+        glyph: glyphs[n.id],
         element: n.element,
         ports: n.ports,
         attributes: n.attributes,
         doc: n.doc,
         diagnostics: n.diagnostics,
-        selected: n.id === selectedId,
+        selected: n.id === highlightedId,
         genericSource: genericSources.has(n.id),
         genericTarget: genericTargets.has(n.id),
       },
@@ -498,33 +487,33 @@ export default function DiagramView({
     }))
 
     setNodes([...rfNodes, ...noteNodes])
-    setEdges([...graph.edges, ...noteEdges] as Edge[])
+    setEdges([...routedEdges.map(edge => ({ ...edge, selected: edge.id === selectedId })), ...noteEdges])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, layout, scope?.id, mode, layoutLoaded, selectedId, onNoteChange, onNoteDelete, model])
+  }, [graph, layout.notes, positions, routedEdges, scope?.id, layoutLoaded, selectedId, highlightedId, onNoteChange, onNoteDelete, model, glyphs])
 
   // Keep selection styling in sync without resetting positions.
   useEffect(() => {
     setNodes((current) =>
       current.map((n) => {
         if (n.type === 'note') return n
-        return n.data.selected === (n.id === selectedId)
+        return n.data.selected === (n.id === highlightedId)
           ? n
-          : { ...n, data: { ...n.data, selected: n.id === selectedId } }
+          : { ...n, data: { ...n.data, selected: n.id === highlightedId } }
       }),
     )
-  }, [selectedId, setNodes])
+  }, [highlightedId, setNodes])
 
   const persistLayout = useCallback(
-    (positions: Record<string, { x: number; y: number }>) => {
-      if (!scope) return
+    (positions: Record<string, DropPosition>, targetScope = scope?.id) => {
+      if (!targetScope) return
       const baseScopes = layout.version === LAYOUT_VERSION ? layout.scopes ?? {} : {}
       const next: LayoutFile = {
         ...layout,
         version: LAYOUT_VERSION,
         scopes: {
           ...baseScopes,
-          [scope.id]: {
-            ...(baseScopes[scope.id] ?? {}),
+          [targetScope]: {
+            ...(baseScopes[targetScope] ?? {}),
             [mode]: positions,
           },
         },
@@ -555,7 +544,8 @@ export default function DiagramView({
       const positions: Record<string, { x: number; y: number }> = {}
       for (const n of nodes) {
         if (n.type === 'sysml') {
-          positions[n.id] = { x: Math.round(n.position.x), y: Math.round(n.position.y) }
+          const position = n.id === node.id ? node.position : n.position
+          positions[n.id] = { x: Math.round(position.x), y: Math.round(position.y) }
         }
       }
       persistLayout(positions)
@@ -570,37 +560,41 @@ export default function DiagramView({
       current.map((n) => ({ ...n, position: positions[n.id] ?? n.position })),
     )
     persistLayout(positions)
+    setFitRevision(revision => revision + 1)
+  }
+
+  const placeElement = (id: string, point: DropPosition) => {
+    const element = byId(model, id)
+    if (!element || !canPlaceElement(element)) return
+    const displayed = graph.nodes.some(node => node.id === id)
+    const owner = displayed ? scope : scopes.find(candidate => candidate.id === element.parentId)
+    if (!owner) {
+      onNotice?.('Open a saved view to place this element alongside a different model scope.')
+      return
+    }
+    const geometry = displayed ? positions : layout.scopes?.[owner.id]?.[mode] ?? {}
+    persistLayout({ ...geometry, [id]: { x: Math.round(point.x), y: Math.round(point.y) } }, owner.id)
+    if (owner.id !== scope?.id) {
+      setScopeId(owner.id)
+      setFitRevision(revision => revision + 1)
+    }
+    onSelect(id)
   }
 
   const handleConnect = async (params: Connection) => {
-    if (!scope || !params.source || !params.target) return
-    const sourcePortId = params.sourceHandle?.endsWith('-out')
-      ? params.sourceHandle.slice(0, -4)
-      : null
-    const targetPortId = params.targetHandle?.endsWith('-in')
-      ? params.targetHandle.slice(0, -3)
-      : null
-    if (!sourcePortId || !targetPortId) return
-    const sourcePort = byId(model, sourcePortId)
-    const targetPort = byId(model, targetPortId)
-    if (!sourcePort || !targetPort) return
-    const sourceNode = byId(model, params.source)
-    const targetNode = byId(model, params.target)
-    if (!sourceNode || !targetNode) return
-    await onAddConnection({
-      parent: scope.id,
-      source: `${sourceNode.name}.${sourcePort.name}`,
-      target: `${targetNode.name}.${targetPort.name}`,
-    })
+    const created = await connectModelPorts(model, params, onAddConnection)
+    if (created && mode !== 'interconnection') {
+      setMode('interconnection')
+      setFitRevision(revision => revision + 1)
+    }
   }
 
   const selectedConnection = edges.find((e) => e.id === selectedId)
-  const modelNodeCount = nodes.filter((n) => n.type === 'sysml').length
-  const noteCount = nodes.filter((n) => n.type === 'note').length
-  const connectionCount = edges.filter((e) => !String(e.id).startsWith('note-edge-')).length
 
   if (!scope) {
     return (
+      <>
+      <div className="view-toolbar diagram-toolbar">{navigation}</div>
       <div className="empty-state">
         <div className="icon-wrap">
           <Link2 size={22} />
@@ -611,58 +605,33 @@ export default function DiagramView({
           <Plus size={13} /> Add element
         </button>
       </div>
+      </>
     )
   }
 
   return (
     <>
-      <div className="view-toolbar">
-        <span className="section-title">Scope</span>
-        <select
-          className="select input-sm"
-          style={{ width: 310 }}
-          value={scopeId}
-          onChange={(e) => setScopeId(e.target.value)}
-        >
-          {scopes.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.qname}
-            </option>
-          ))}
+      <div className="view-toolbar diagram-toolbar">
+        {navigation}
+        <select className="select input-sm diagram-scope" aria-label="Model scope" value={scopeId}
+          onChange={e => setScopeId(e.target.value)}>
+          {scopes.map(item => <option key={item.id} value={item.id}>{item.qname}</option>)}
         </select>
-        <div className="segmented">
-          <button
-            className={cx(mode === 'interconnection' && 'active')}
-            onClick={() => setMode('interconnection')}
-          >
-            Interconnection
-          </button>
-          <button
-            className={cx(mode === 'containment' && 'active')}
-            onClick={() => setMode('containment')}
-          >
-            Containment
-          </button>
-        </div>
+        <select className="select input-sm" aria-label="Diagram projection" value={mode}
+          onChange={e => setMode(e.target.value as DiagramMode)}>
+          <option value="interconnection">Interconnection</option>
+          <option value="containment">Containment</option>
+        </select>
         <div className="grow" />
-        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-          {plural(modelNodeCount, 'node')} · {plural(connectionCount, 'edge')} · {noteCount} note
-          {noteCount === 1 ? '' : 's'}
-        </span>
-        <button className="btn btn-sm" onClick={autoLayout}>
-          <Wand2 size={13} /> Auto layout
-        </button>
-        <button className="btn btn-sm" onClick={addNote} disabled={graph.nodes.length === 0}>
-          <StickyNote size={13} /> Note
-        </button>
-        <button className="btn btn-sm" onClick={() => onAddElement(scope.id)}>
-          <Plus size={13} /> Part
-        </button>
-        <button className="btn btn-sm" onClick={() => onOpenAddConnection(scope.id)}>
-          <Link2 size={13} /> Connect
-        </button>
+        <button className="btn btn-sm" onClick={autoLayout}><Wand2 size={14} /> Auto layout</button>
+        <ActionMenu label="Diagram actions" iconOnly>
+          <button onClick={() => onAddElement(scope.id)}>Add part</button>
+          <button onClick={() => onOpenAddConnection(scope.id)}>Add connection</button>
+          <button onClick={addNote} disabled={graph.nodes.length === 0}>Add note</button>
+        </ActionMenu>
       </div>
 
+      {glyphError && <p role="alert">{glyphError}</p>}
       <div className="diagram-wrap">
         {nodes.length === 0 ? (
           <div className="empty-state">
@@ -677,7 +646,7 @@ export default function DiagramView({
           </div>
         ) : (
           <>
-            <ReactFlow
+            <DiagramCanvas elementDrop={{ file: file.name, place: placeElement }} split={split} frameTitle={displayName(scope)} fitRevision={fitRevision}
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
@@ -685,56 +654,17 @@ export default function DiagramView({
               onNodeClick={(_, node) => {
                 if (node.type === 'sysml') onSelect(node.id)
               }}
+              onNodeDoubleClick={(event, node) => {
+                if (node.type !== 'sysml' || (event.target as Element).closest('button, .react-flow__handle')) return
+                onOpenElementDiagram?.(node.id)
+              }}
               onEdgeClick={(_, edge) => {
                 const data = edge.data as EdgeData | undefined
                 if (data?.connection) onSelect(data.connection.id)
               }}
               onNodeDragStop={onNodeDragStop}
               onConnect={handleConnect}
-              nodeTypes={nodeTypes}
-              fitView
-              fitViewOptions={{ padding: 0.22 }}
-              minZoom={0.15}
-              maxZoom={1.8}
-              proOptions={{ hideAttribution: true }}
-              defaultEdgeOptions={{ type: 'smoothstep' }}
-            >
-              <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
-              <Controls showInteractive={false} />
-              <MiniMap
-                pannable
-                zoomable
-                nodeColor={(n) =>
-                  n.type === 'note'
-                    ? 'var(--warning)'
-                    : kindColor((n.data as SysmlNodeData).element)
-                }
-                maskColor="rgba(3, 7, 12, 0.6)"
-              />
-            </ReactFlow>
-            <div className="diagram-hint">
-              <Link2 size={12} />
-              {mode === 'interconnection'
-                ? 'Drag from a port handle to another port to create a connection. Add a note to annotate a node.'
-                : 'Containment view — switch to Interconnection to see ports and links. Notes attach with a dashed line.'}
-            </div>
-            <div className="diagram-legend">
-              <div className="legend-row">
-                <span className="legend-dot" style={{ background: '#38bdf8' }} /> part
-              </div>
-              <div className="legend-row">
-                <span className="legend-dot" style={{ background: '#f59e0b' }} /> port
-              </div>
-              <div className="legend-row">
-                <span className="legend-dot" style={{ background: '#f472b6' }} /> requirement
-              </div>
-              <div className="legend-row">
-                <span className="legend-dot" style={{ background: '#22d3ee' }} /> connection
-              </div>
-              <div className="legend-row">
-                <span className="legend-dot" style={{ background: 'var(--warning)' }} /> note
-              </div>
-            </div>
+            />
             {selectedConnection && (
               <div className="diagram-hint" style={{ left: 'auto', right: 14, bottom: 14 }}>
                 Selected: {selectedConnection.label ?? 'connection'}

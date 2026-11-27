@@ -20,30 +20,9 @@ export function shortKind(el: SysmlElement): string {
 }
 
 export function kindColor(el: SysmlElement): string {
-  switch (el.kind) {
-    case 'package':
-      return '#8b5cf6'
-    case 'part':
-      return '#38bdf8'
-    case 'port':
-      return '#f59e0b'
-    case 'attribute':
-      return '#a3e635'
-    case 'requirement':
-      return '#f472b6'
-    case 'connection':
-      return '#22d3ee'
-    case 'satisfy':
-      return '#fb7185'
-    case 'action':
-      return '#f97316'
-    case 'state':
-      return '#c084fc'
-    case 'item':
-      return '#34d399'
-    default:
-      return '#94a3b8'
-  }
+  const kind = el.kind.replaceAll(' ', '-')
+  return el.isDef ? `var(--keyword-${kind}-def, var(--keyword-${kind}, var(--text-dim)))`
+    : `var(--keyword-${kind}, var(--text-dim))`
 }
 
 export function byId(model: SysmlModel, id: string | undefined): SysmlElement | undefined {
@@ -333,9 +312,8 @@ export function portsOf(model: SysmlModel, el: SysmlElement): SysmlElement[] {
 export function satisfiesFor(model: SysmlModel, req: SysmlElement): SysmlElement[] {
   const links = model.elements.filter((e) => e.kind === 'satisfy')
   const ids = new Set<string>()
-  const requirementIds = new Set([req.id, req.typeId].filter(Boolean) as string[])
   for (const link of links) {
-    if (link.requirementId && requirementIds.has(link.requirementId)) {
+    if (link.requirementId === req.id) {
       if (link.satisfierId) ids.add(link.satisfierId)
     }
   }
@@ -367,23 +345,22 @@ export function editCapabilities(el: SysmlElement) {
   }
 }
 
-export function requiredConstraints(model: SysmlModel, req: SysmlElement): SysmlElement[] {
+export function requirementConstraints(model: SysmlModel, req: SysmlElement, role: 'require' | 'assume' = 'require'): SysmlElement[] {
   const constraints: SysmlElement[] = []
   const seen = new Set<string>()
   let current: SysmlElement | undefined = req
   while (current && !seen.has(current.id)) {
     seen.add(current.id)
-    constraints.push(...childrenOf(model, current.id).filter(e => e.kind === 'constraint' && e.constraintRole === 'require'))
+    constraints.push(...childrenOf(model, current.id).filter(e => e.kind === 'constraint' && e.constraintRole === role))
     current = byId(model, current.typeId)
   }
   return constraints
 }
 
 export function verificationCasesFor(model: SysmlModel, req: SysmlElement): SysmlElement[] {
-  const targets = new Set([req.id, req.typeId].filter(Boolean))
   const cases = new Map<string, SysmlElement>()
   for (const link of model.elements) {
-    if (link.kind !== 'verify' || !targets.has(link.requirementId)) continue
+    if (link.kind !== 'verify' || link.requirementId !== req.id) continue
     let owner = byId(model, link.parentId)
     while (owner && !['verification', 'verification case'].includes(owner.kind)) owner = byId(model, owner.parentId)
     if (owner) cases.set(owner.id, owner)
