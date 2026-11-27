@@ -26,9 +26,12 @@ are pinned to LF. The parser and editing behavior are unchanged from the origina
 | Container startup, HTTP interface and bundled model | Passed; sample parsed as 53 elements |
 | Model save, snapshot creation and exact restore | Passed through the HTTP API |
 | Model, history and layout persistence | Passed after removing and recreating the container with the same named volume |
-| Windows amd64 executable build | Passed using the Go cross-compiler |
+| Windows amd64 executable build | Passed with the Go 1.24 cross-compiler and installed Go 1.27.4 on Windows |
+| Windows Go installation | Go 1.27.4 installed successfully |
+| Native Windows Go tests | Could not execute: Application Control blocked the generated test executable |
+| Native Windows static checks | `go vet ./...` passed with Go 1.27.4 |
 | Windows native execution | Blocked by this laptop's Application Control policy |
-| Native `go run` on Windows | Not verified; Go installation awaited Windows approval |
+| Native `go run` on Windows | Build succeeded; Application Control blocked execution of the generated app |
 | Podman execution | Not verified; Podman was not installed on the verification host |
 | Browser interaction and visual inspection | Not verified; the browser preview could not attach |
 | Documentation links and whitespace | Passed |
