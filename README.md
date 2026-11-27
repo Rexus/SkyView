@@ -15,6 +15,10 @@ Explore the [inspection drone example](docs/drone-example.md): connected subsyst
 mission behavior and planned verification checks. The native-valid model loads without diagnostics.
 The guide includes a generated sequence preview and the current behavior-view limitations.
 
+Try the [inverted pendulum example](docs/pendulum-example.md) for a cart-on-a-rail control problem:
+physical parts, a Simulink-style signal loop, swing-up and automatic balance, requirements,
+and an optional runnable scientific simulation.
+
 **Contents:** [Features](#features) · [Quick start](#quick-start) · [Development](#development) ·
 [Language support](#language-support) · [Project layout](#project-layout) · [Origins](#origins)
 
@@ -24,11 +28,13 @@ The guide includes a generated sequence preview and the current behavior-view li
   saved node positions and diagram notes.
 - **Grid editing:** edit element names, types, values and documentation; add or remove elements.
 - **Requirements:** inspect native constraints, satisfaction assertions and planned verification links.
-- **Source editing:** syntax highlighting, parser diagnostics and direct access to the model text.
+- **Source editing:** syntax highlighting, [inline diagnostics and suggested fixes](docs/local-development.md#source-validation), and direct access to the model text.
 - **File workflows:** import and download `.sysml` files, undo and redo visual model edits,
   and restore saved model snapshots.
 - **Shared views:** import/export native model bundles and render selected views consistently in the
   browser or CLI. See [model exchange and shared views](docs/model-exchange.md).
+- **Projects:** independent directories with nested models and views; bundled examples, ZIP upload/export,
+  public GitHub/GitLab snapshots and configured local folders. See the [project guide](docs/projects.md).
 - **Workspace UI:** model navigation, a command palette, and light and dark themes.
 
 Structured edits modify the source text and reparse the model. Diagram positions and notes are stored
@@ -42,8 +48,8 @@ Install Go 1.24 or later. From the repository root, run:
 go run ./cmd/skyview -addr 127.0.0.1:8081
 ```
 
-Open [SkyView](http://127.0.0.1:8081) and select `InspectionDrone.sysml` for the drone example, or
-`example-model.sysml` for the original sample.
+Open [SkyView](http://127.0.0.1:8081), choose **Projects → Examples**, and use the inspection drone,
+inverted pendulum or starter system. Each opens as an independent editable project.
 The repository includes a built web interface, so this first run does not require Node.js or Nix.
 Port 8081 lets SkyView run alongside SysON on 8080. See the [local run guide](docs/local-development.md)
 for standalone executables, Docker, Podman, persistent storage and backups.
@@ -56,13 +62,15 @@ docker build -t skyview:local .
 docker run -d --name skyview -p 127.0.0.1:8081:8080 -v skyview-workspace:/data skyview:local
 ```
 
-For native runs, models are stored in `./workspace`; Docker uses the `skyview-workspace` named volume. An example is created when the workspace contains no `.sysml` files.
-History and diagram layouts are stored in `workspace/.skyview/` and are ignored by Git.
-Back up the whole workspace to retain both model files and presentation data.
+Managed projects are stored in `./workspace/projects/`; Docker uses the `skyview-workspace` named volume.
+Existing root-level files remain available as **Workspace files**. Each project keeps its models, views,
+layouts and history together. Back up the whole workspace and any separately configured project folders.
+See [project storage and portability](docs/projects.md#directory-format).
 
 | Setting | Command-line flag | Environment variable | Default |
 | --- | --- | --- | --- |
 | Workspace directory | `-workspace` | `SKYVIEW_WORKSPACE` | `./workspace` |
+| Local project folder (repeatable) | `-project NAME=PATH` | — | None |
 | Listen address | `-addr` | `SKYVIEW_ADDR` | `0.0.0.0:8080` |
 
 Command-line flags override environment variables. The quick-start command binds to localhost;
@@ -92,8 +100,8 @@ Open [the development interface](http://127.0.0.1:5173). Its API requests are fo
 Run the existing Go checks from the repository root:
 
 ```sh
-go test ./cmd/... ./internal/...
-go vet ./cmd/... ./internal/...
+go test ./cmd/... ./internal/... ./examples/...
+go vet ./cmd/... ./internal/... ./examples/...
 ```
 
 The tests cover the bundled models, scoped reference resolution, behavior and constraint parsing,
@@ -122,7 +130,8 @@ Known boundaries include:
 
 - Imports resolve within the parsed source, including combined model bundles. External files and
   standard libraries are not loaded automatically. Recognized library names are a finite subset:
-  scalar types, `ISQ::DurationValue`, and `SI::s` in quantities.
+  scalar types and selected SI mechanical quantities. The exact catalogue is in
+  [quantities.go](internal/sysml/quantities.go); unit conversion and dimensional analysis are not implemented.
 - Some constructs, including native `view`, `rendering`, `concern`, `alias` and `metadata`, remain
   unprojected; their source is preserved and the projection gaps are reported.
 - Sequence, activity and state diagrams, constraint evaluation and verification execution are not
@@ -143,7 +152,10 @@ API and Services specification has not been established [3].
 | `internal/sysml/` | Lexer, parser, model representation, diagnostics and source edits |
 | `internal/server/` | HTTP API, workspace storage, history and embedded interface |
 | `web/` | React, TypeScript and Vite frontend |
-| `workspace/` | Default model workspace and bundled examples |
+| `internal/projects/` | Project directories, archive safety and Git snapshot import |
+| `examples/` | Versioned, embedded example project templates |
+| `workspace/` | Ignored runtime projects and legacy files |
+| `architecture/` | Native project design contract and implementation map |
 | `kubernetes/` | Cluster deployment configuration and guide |
 | `scripts/` | Container build tooling and optional native model validation/preview helpers |
 

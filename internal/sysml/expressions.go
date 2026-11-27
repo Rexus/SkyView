@@ -30,7 +30,7 @@ func (p *parser) parseConstraintBody(e *Element) {
 }
 
 // This expression parser covers literals, feature references, parentheses,
-// unary not/signs, arithmetic, comparisons, boolean operators and SI seconds.
+// unary not/signs, arithmetic, comparisons, boolean operators and a finite set of SI quantity forms.
 // It checks shape and references, but does not execute or prove a constraint.
 type expressionParser struct {
 	p           *parser
@@ -120,7 +120,9 @@ func (x *expressionParser) expression(min int) string {
 			}
 			left = "Boolean"
 		case "==", "!=", "<", "<=", ">", ">=":
-			if left != right && left != "Unknown" && right != "Unknown" {
+			genericQuantity := (left == "Quantity" || right == "Quantity") &&
+				left != "Boolean" && right != "Boolean" && left != "String" && right != "String"
+			if left != right && left != "Unknown" && right != "Unknown" && !genericQuantity {
 				x.problem("Incompatible comparison operands")
 			}
 			left = "Boolean"
@@ -144,7 +146,7 @@ func (x *expressionParser) primary() string {
 	}
 	if x.accept("+") || x.accept("-") {
 		kind := x.expression(7)
-		if kind != "Number" && kind != "Duration" && kind != "Unknown" {
+		if kind == "Boolean" || kind == "String" {
 			x.problem("Unary sign requires a numeric operand")
 		}
 		return kind
@@ -162,14 +164,19 @@ func (x *expressionParser) primary() string {
 			x.problem("Invalid numeric literal")
 		}
 		if x.accept("[") {
-			unit, _ := x.path()
-			if unit != "SI::s" {
-				x.unsupported("Unresolved or unsupported unit '" + unit + "'")
+			var unit strings.Builder
+			for x.cur().Kind != TokEOF && x.cur().Text != "]" {
+				unit.WriteString(x.next().Text)
 			}
 			if !x.accept("]") {
 				x.problem("Expected ']' after quantity unit")
 			}
-			return "Duration"
+			kind, ok := quantityUnits[unit.String()]
+			if !ok {
+				x.unsupported("Unresolved or unsupported unit '" + unit.String() + "'")
+				return "Unknown"
+			}
+			return kind
 		}
 		return "Number"
 	}
@@ -224,12 +231,14 @@ func expressionType(id string) string {
 	if !strings.HasPrefix(id, "builtin:") {
 		return "Unknown"
 	}
-	name := tailName(strings.TrimPrefix(id, "builtin:"))
+	path := strings.TrimPrefix(id, "builtin:")
+	if kind, ok := quantityTypes[path]; ok {
+		return kind
+	}
+	name := tailName(path)
 	switch name {
 	case "Boolean", "String":
 		return name
-	case "DurationValue":
-		return "Duration"
 	case "Integer", "Real", "Natural", "Rational", "Number", "Positive", "Negative", "UnlimitedNatural":
 		return "Number"
 	}

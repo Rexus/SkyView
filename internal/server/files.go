@@ -2,10 +2,13 @@ package server
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Rexus/SkyView/internal/projects"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -61,49 +64,49 @@ type FileInfo struct {
 }
 
 func (s *Server) listFiles() ([]FileInfo, error) {
-	entries, err := os.ReadDir(s.workspace)
-	if err != nil {
-		return nil, err
-	}
-	files := make([]FileInfo, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sysml") {
-			continue
+	files := []FileInfo{}
+	err := filepath.WalkDir(s.workspace, func(full string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		info, err := e.Info()
+		if full == s.workspace {
+			return nil
+		}
+		if entry.IsDir() {
+			if !s.recursive || strings.HasPrefix(entry.Name(), ".") || entry.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(s.workspace, full)
 		if err != nil {
-			continue
+			return err
 		}
-		files = append(files, FileInfo{Name: e.Name(), Size: info.Size(), Modified: info.ModTime()})
-	}
+		rel = filepath.ToSlash(rel)
+		if !projects.ModelPath(rel) || !entry.Type().IsRegular() {
+			return nil
+		}
+		if _, err = s.filePath(rel); err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, FileInfo{Name: rel, Size: info.Size(), Modified: info.ModTime()})
+		return nil
+	})
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
-	return files, nil
+	return files, err
 }
 
-func validFileName(name string) bool {
-	if name == "" || len(name) > 120 {
-		return false
-	}
-	if name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
-		return false
-	}
-	if !strings.HasSuffix(name, ".sysml") || strings.HasPrefix(name, ".") {
-		return false
-	}
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
-			continue
-		}
-		return false
-	}
-	return true
-}
+func validFileName(name string) bool { return projects.ModelPath(name) }
 
 func (s *Server) filePath(name string) (string, error) {
-	if !validFileName(name) {
-		return "", fmt.Errorf("invalid file name %q (use letters, digits, dots, dashes and underscores, ending in .sysml)", name)
+	if !validFileName(name) || (!s.recursive && strings.Contains(name, "/")) {
+		return "", fmt.Errorf("invalid model path; use a project-relative .sysml path")
 	}
-	return filepath.Join(s.workspace, name), nil
+	return projects.Resolve(s.workspace, name)
 }
 
 func (s *Server) readFile(name string) (string, error) {
@@ -135,7 +138,9 @@ func (s *Server) writeFile(name, content string) error {
 		return err
 	}
 	if old, err := os.ReadFile(path); err == nil {
-		_ = s.snapshot(name, string(old))
+		if err := s.snapshot(name, string(old)); err != nil {
+			return err
+		}
 	}
 	return atomicWrite(path, []byte(content))
 }
@@ -165,11 +170,20 @@ func atomicWrite(path string, data []byte) error {
 }
 
 func (s *Server) historyDir(name string) string {
+	if s.recursive {
+		// A fixed per-path key prevents deleting A.sysml history from also deleting
+		// the history of A/B.sysml. Legacy flat workspaces retain their old layout.
+		key := fmt.Sprintf("%x", sha256.Sum256([]byte(name)))
+		return filepath.Join(s.workspace, ".skyview", "history", key)
+	}
 	return filepath.Join(s.workspace, ".skyview", "history", strings.TrimSuffix(name, ".sysml"))
 }
 
 func (s *Server) snapshot(name, content string) error {
-	dir := s.historyDir(name)
+	dir, err := s.statePath(s.historyDir(name))
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -216,7 +230,10 @@ type Revision struct {
 }
 
 func (s *Server) listHistory(name string) ([]Revision, error) {
-	dir := s.historyDir(name)
+	dir, err := s.statePath(s.historyDir(name))
+	if err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -226,7 +243,7 @@ func (s *Server) listHistory(name string) ([]Revision, error) {
 	}
 	revs := make([]Revision, 0, len(entries))
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sysml") {
+		if !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), ".sysml") {
 			continue
 		}
 		info, err := e.Info()
@@ -243,7 +260,11 @@ func (s *Server) readRevision(name, id string) (string, error) {
 	if id == "" || id != filepath.Base(id) || strings.ContainsAny(id, `/\`) || !strings.HasSuffix(id, ".sysml") {
 		return "", fmt.Errorf("invalid revision")
 	}
-	b, err := os.ReadFile(filepath.Join(s.historyDir(name), id))
+	file, err := s.statePath(filepath.Join(s.historyDir(name), id))
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(file)
 	if err != nil {
 		return "", fmt.Errorf("revision not found")
 	}
@@ -255,7 +276,11 @@ func (s *Server) layoutPath(name string) string {
 }
 
 func (s *Server) readLayout(name string) ([]byte, error) {
-	b, err := os.ReadFile(s.layoutPath(name))
+	file, err := s.statePath(s.layoutPath(name))
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(file)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return []byte("{}"), nil
@@ -272,7 +297,11 @@ func (s *Server) writeLayout(name string, body []byte) error {
 	if len(body) > maxLayoutSize {
 		return fmt.Errorf("layout is too large")
 	}
-	return atomicWrite(s.layoutPath(name), body)
+	file, err := s.statePath(s.layoutPath(name))
+	if err != nil {
+		return err
+	}
+	return atomicWrite(file, body)
 }
 
 func (s *Server) deleteFile(name string) error {
@@ -280,13 +309,24 @@ func (s *Server) deleteFile(name string) error {
 	if err != nil {
 		return err
 	}
+	layout, err := s.statePath(s.layoutPath(name))
+	if err != nil {
+		return err
+	}
+	history, err := s.statePath(s.historyDir(name))
+	if err != nil {
+		return err
+	}
+	viewPath, err := s.viewsPath(name)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(path); err != nil {
 		return err
 	}
-	_ = os.Remove(s.layoutPath(name))
-	viewPath, _ := s.viewsPath(name)
+	_ = os.Remove(layout)
 	_ = os.Remove(viewPath)
-	_ = os.RemoveAll(s.historyDir(name))
+	_ = os.RemoveAll(history)
 	return nil
 }
 
@@ -300,4 +340,13 @@ func readLimited(r io.Reader, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("request body is too large")
 	}
 	return b, nil
+}
+
+// statePath applies the same project boundary to layouts and revisions as models.
+func (s *Server) statePath(full string) (string, error) {
+	rel, err := filepath.Rel(s.workspace, full)
+	if err != nil {
+		return "", err
+	}
+	return projects.Resolve(s.workspace, filepath.ToSlash(rel))
 }

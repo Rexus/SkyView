@@ -11,6 +11,7 @@ in a workspace directory. The examples use port **8081**, so SkyView can run alo
 - [Windows with AlmaLinux WSL](#windows-with-almalinux-wsl)
 - [Docker](#docker)
 - [Podman](#podman)
+- [Source validation](#source-validation)
 - [Data and recovery](#data-and-recovery)
 
 ## Go app
@@ -24,11 +25,13 @@ From the repository root:
 go run ./cmd/skyview -addr 127.0.0.1:8081
 ```
 
-Open [SkyView](http://127.0.0.1:8081). Select `example-model.sysml`, then open the Grid, Diagram,
-Requirements or Source tab. Stop the server with Ctrl+C.
+Open [SkyView](http://127.0.0.1:8081). Use **Projects → Examples** to start an editable example, then
+open Grid, Diagram, Requirements or Source. Stop the server with Ctrl+C.
+See [projects](projects.md) for ZIP uploads, repository snapshots and local folders.
 
-To use your own model directory, append `-workspace ./my-models`. Paths are relative to the directory
-where you start the application. The default is `./workspace`.
+`-workspace ./my-workspace` chooses the persistent workspace root (default `./workspace`).
+To expose an existing model directory or checkout, add `-project NAME=PATH`; see the
+[local project guide](projects.md#local-folders). Paths are relative to where you start the app.
 
 To build and run an executable on Windows, from the repository root:
 
@@ -73,8 +76,8 @@ instance using port 8081 before starting this one.
 To run the checks from the same PowerShell directory:
 
 ```powershell
-wsl -d AlmaLinux-10 --exec go test -timeout 90s ./cmd/... ./internal/...
-wsl -d AlmaLinux-10 --exec go vet ./cmd/... ./internal/...
+wsl -d AlmaLinux-10 --exec go test -timeout 90s ./cmd/... ./internal/... ./examples/...
+wsl -d AlmaLinux-10 --exec go vet ./cmd/... ./internal/... ./examples/...
 ```
 
 If you use a different distribution name, find it with `wsl --list --quiet` and replace
@@ -133,11 +136,35 @@ container user. Docker and Podman have separate image and volume stores.
 Use `podman logs skyview`, `podman stop skyview` and `podman start skyview` to manage the container.
 To update it, rebuild, stop and remove the container, then repeat the run command with the same volume.
 
+## Source validation
+
+Open a model's **Source** tab. SkyView checks the current draft after a short typing pause;
+**Validate** checks it immediately. Validation does not save the file.
+
+- Errors and warnings underline the affected text and mark the corresponding line in the gutter.
+- Hover over the marked text or gutter marker for the reason and a suggested fix when available.
+- Click a diagnostic row to select its exact source range. **F8** moves to the next diagnostic;
+  **Ctrl+Shift+M** (macOS: **Cmd+Shift+M**) opens CodeMirror's diagnostic panel.
+- Editing clears outdated highlights immediately. Results from earlier drafts or another file/project
+  cannot replace current results. A connection failure is shown as **Validation unavailable**.
+
+Suggestions are review guidance; SkyView does not apply them automatically. Its parser supports a
+subset of SysML v2, so an unresolved library reference can be a tool limitation. Keep the project's
+native SysML validation as the conformance gate. Opening a CRLF file does not mark it as edited;
+source editing uses LF line endings when saved.
+
+![Unsaved source warning with an exact underline, gutter marker and suggested fix](images/skyview-source-warning.jpg)
+
+The HTTP diagnostic format is described in [the API reference](api.md#source-diagnostics).
+Frontend regression tests cover ranges, hover content, draft changes and validation failures.
+Run them from `web/` with `npm test`; GitHub and GitLab CI use the same command.
+
 ## Data and recovery
 
 The native app's `./workspace` and the container's named volume are separate workspaces.
-Import or download individual `.sysml` files through the UI to move models between them.
-Copy the entire workspace when you also want diagram layouts and history.
+Use **Export project** and **Projects → Upload ZIP** to move models, views, layouts and assets between
+them. Copy the entire workspace when you also need revision history. Back up any separately configured
+local project folders too; they are not copied into the workspace.
 
 For a container backup, stop SkyView and copy its workspace to a new local directory:
 

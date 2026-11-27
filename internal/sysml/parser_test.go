@@ -8,7 +8,7 @@ import (
 
 func loadSample(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile("../../workspace/example-model.sysml")
+	b, err := os.ReadFile("../../examples/starter/example-model.sysml")
 	if err != nil {
 		t.Fatalf("read sample: %v", err)
 	}

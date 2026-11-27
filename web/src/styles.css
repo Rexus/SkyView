@@ -2403,3 +2403,12 @@ a {
 .shared-view-toolbar select { margin-left: 12px; padding: 6px; }
 .shared-view-note { font-size: 12px; opacity: .7; margin: 16px 0; max-width: 900px; }
 .shared-view-svg { display: block; width: 100%; max-width: 1100px; background: white; }
+
+/* Source diagnostics share CodeMirror's range, hover and gutter implementation. */
+button.diag-item { width: 100%; text-align: left; color: var(--text); background: none; border: 0; border-bottom: 1px solid var(--border); }
+button.diag-item:hover, button.diag-item:focus-visible { background: var(--bg-hover); }
+.diag-hint { display: block; margin-top: 3px; color: var(--text-muted); line-height: 1.4; }
+.cm-tooltip-lint { max-width: min(520px, 80vw); }
+.cm-diagnosticText { white-space: pre-wrap; }
+.cm-lintRange-error { background-color: color-mix(in srgb, var(--danger) 12%, transparent); }
+.cm-lintRange-warning { background-color: color-mix(in srgb, var(--warning) 10%, transparent); }

@@ -54,8 +54,8 @@ export function NewFileModal({
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!/^[A-Za-z0-9._-]+\.sysml$/.test(name)) {
-      setError('Use letters, digits, dots, dashes and underscores, ending in .sysml')
+    if (!/^[A-Za-z0-9._/-]+\.sysml$/.test(name)) {
+      setError('Use a relative path with letters, digits, dots, dashes and underscores, ending in .sysml')
       return
     }
     setBusy(true)
@@ -72,7 +72,7 @@ export function NewFileModal({
   return (
     <Modal
       title="New model file"
-      subtitle="Create a SysML v2 textual model in the workspace"
+      subtitle="Create a SysML v2 textual model in the selected project"
       icon={<FilePlus2 size={18} />}
       onClose={onClose}
       footer={
@@ -87,7 +87,7 @@ export function NewFileModal({
       <label className="field">
         <span className="field-label">File name</span>
         <input className="input mono" value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} />
-        <span className="form-hint">A starter package is created with a System definition and usage.</span>
+        <span className="form-hint">Use a name or nested path such as models/System.sysml. A starter package is created.</span>
       </label>
       {error && <div className="form-error">{error}</div>}
     </Modal>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { API_BASE } from '../api'
 import type { FileResponse } from '../types'
 
 type Selection = { id: string; title: string; owner: string }
@@ -9,7 +10,7 @@ export default function SharedViews({ file }: { file: FileResponse }) {
   const [selected, setSelected] = useState('')
   const [error, setError] = useState('')
   const [svg, setSvg] = useState('')
-  const base = `/api/files/${encodeURIComponent(file.name)}/views`
+  const base = `${API_BASE}/files/${encodeURIComponent(file.name)}/views`
   useEffect(() => {
     const controller = new AbortController()
     setViews([]); setSelected(''); setError(''); setSvg('')

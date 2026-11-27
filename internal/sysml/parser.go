@@ -111,20 +111,6 @@ func (p *parser) isIdent(text string) bool {
 	return t.Kind == TokIdent && !t.Quoted && t.Text == text
 }
 
-func (p *parser) diag(severity, msg string, tok Token, elementID string) {
-	line, col := tok.Line, tok.Col
-	if tok.Kind == TokEOF {
-		line, col = lineCol(p.src, tok.Start)
-	}
-	p.model.Diagnostics = append(p.model.Diagnostics, Diagnostic{
-		Severity:  severity,
-		Message:   msg,
-		Line:      line,
-		Column:    col,
-		ElementID: elementID,
-	})
-}
-
 func (p *parser) add(e *Element) *Element {
 	base := e.ID
 	if n := p.idCounts[base]; n > 0 {
@@ -769,13 +755,13 @@ func (p *parser) semantic() {
 		if e.Type != "" {
 			e.TypeID = p.resolveType(e, e.Type)
 			if e.TypeID == "" {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved type '%s'", e.Type), e.Spans.Type.Start, e.ID)
+				p.diagRange(SeverityWarning, fmt.Sprintf("Unresolved type '%s'", e.Type), e.Spans.Type, e.ID)
 			}
 		}
 		if e.Specializes != "" {
 			e.SpecializesID = p.resolveType(e, e.Specializes)
 			if e.SpecializesID == "" {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved specialisation '%s'", e.Specializes), e.Spans.Decl.Start, e.ID)
+				p.diagRange(SeverityWarning, fmt.Sprintf("Unresolved specialisation '%s'", e.Specializes), e.Spans.Specializes, e.ID)
 			}
 		}
 	}
@@ -787,7 +773,7 @@ func (p *parser) semantic() {
 			src, srcTop := p.resolveFeature(scope, e.Source)
 			dst, dstTop := p.resolveFeature(scope, e.Target)
 			if src == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved connection source '%s'", e.Source), e.Spans.Decl.Start, e.ID)
+				p.diagRange(SeverityWarning, fmt.Sprintf("Unresolved connection source '%s'", e.Source), e.SourceSpan, e.ID)
 			} else {
 				e.SourceID = src.ID
 				if srcTop != nil {
@@ -797,7 +783,7 @@ func (p *parser) semantic() {
 				}
 			}
 			if dst == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved connection target '%s'", e.Target), e.Spans.Decl.Start, e.ID)
+				p.diagRange(SeverityWarning, fmt.Sprintf("Unresolved connection target '%s'", e.Target), e.TargetSpan, e.ID)
 			} else {
 				e.TargetID = dst.ID
 				if dstTop != nil {
@@ -806,12 +792,7 @@ func (p *parser) semantic() {
 					e.TargetNodeID = dst.ID
 				}
 			}
-			if src != nil && src.Kind != "port" {
-				p.diagAt(SeverityInfo, fmt.Sprintf("Connection source '%s' is a %s, not a port", e.Source, src.Kind), e.Spans.Decl.Start, e.ID)
-			}
-			if dst != nil && dst.Kind != "port" {
-				p.diagAt(SeverityInfo, fmt.Sprintf("Connection target '%s' is a %s, not a port", e.Target, dst.Kind), e.Spans.Decl.Start, e.ID)
-			}
+			// SysML connections may terminate at parts as well as ports.
 		case "dependency":
 			scope := m.ByID[e.ParentID]
 			if src := p.resolveRef(scope, e.Source); src != nil {
@@ -820,20 +801,23 @@ func (p *parser) semantic() {
 			if dst := p.resolveRef(scope, e.Target); dst != nil {
 				e.TargetID = dst.ID
 			}
-			if e.SourceID == "" || e.TargetID == "" {
-				p.diagAt(SeverityWarning, "Unresolved dependency endpoint", e.Spans.Decl.Start, e.ID)
+			if e.SourceID == "" {
+				p.diagRange(SeverityWarning, "Unresolved dependency source '"+e.Source+"'", e.SourceSpan, e.ID)
+			}
+			if e.TargetID == "" {
+				p.diagRange(SeverityWarning, "Unresolved dependency target '"+e.Target+"'", e.TargetSpan, e.ID)
 			}
 		case "satisfy":
 			scope := m.ByID[e.ParentID]
 			req, _ := p.resolveFeature(scope, e.Requirement)
 			sat, _ := p.resolveFeature(scope, e.Satisfier)
 			if req == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved requirement '%s'", e.Requirement), e.Spans.Decl.Start, e.ID)
+				p.diagRange(SeverityWarning, fmt.Sprintf("Unresolved requirement '%s'", e.Requirement), e.RequirementSpan, e.ID)
 			} else {
 				e.RequirementID = req.ID
 			}
 			if sat == nil {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Unresolved satisfier '%s'", e.Satisfier), e.Spans.Decl.Start, e.ID)
+				p.diagRange(SeverityWarning, fmt.Sprintf("Unresolved satisfier '%s'", e.Satisfier), e.SatisfierSpan, e.ID)
 			} else {
 				e.SatisfierID = sat.ID
 			}
@@ -865,7 +849,7 @@ func (p *parser) semantic() {
 	for _, group := range seen {
 		if len(group) > 1 {
 			for _, e := range group[1:] {
-				p.diagAt(SeverityWarning, fmt.Sprintf("Duplicate name '%s' in the same container", e.Name), e.Spans.Decl.Start, e.ID)
+				p.diagRange(SeverityWarning, fmt.Sprintf("Duplicate name '%s' in the same container", e.Name), e.Spans.Name, e.ID)
 			}
 		}
 	}
@@ -875,13 +859,6 @@ func (p *parser) semantic() {
 			return m.Diagnostics[i].Line < m.Diagnostics[j].Line
 		}
 		return m.Diagnostics[i].Column < m.Diagnostics[j].Column
-	})
-}
-
-func (p *parser) diagAt(severity, msg string, offset int, elementID string) {
-	line, col := lineCol(p.src, offset)
-	p.model.Diagnostics = append(p.model.Diagnostics, Diagnostic{
-		Severity: severity, Message: msg, Line: line, Column: col, ElementID: elementID,
 	})
 }
 

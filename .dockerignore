@@ -4,8 +4,7 @@ bin
 web/node_modules
 web/dist
 internal/server/dist/assets
-workspace/.skyview
-workspace/*.sysml
+workspace
 samples
 kubernetes
 README.md

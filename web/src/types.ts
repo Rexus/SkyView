@@ -1,6 +1,8 @@
 export type Severity = 'error' | 'warning' | 'info'
 
 export interface Diagnostic {
+  range?: Span // Half-open UTF-8 byte offsets in the validated source.
+  hint?: string
   severity: Severity
   message: string
   line: number

@@ -1,0 +1,128 @@
+{
+  "status": "passed",
+  "source_sha256": "249b3b8c02054b9a26471b8fce2a8c6f92a20ad2b81343a5281ef4d392414a96",
+  "analysis": "InvertedPendulum::Studies::swingUpResponse",
+  "python": "3.12.11 (main, Aug 14 2025, 00:00:00) [GCC 14.3.1 20250617 (Red Hat 14.3.1-2)]",
+  "packages": {
+    "numpy": "2.5.5",
+    "scipy": "1.18.1",
+    "matplotlib": "3.11.2"
+  },
+  "implementation": {
+    "dynamics.py": "3367533364e28ff1f4b13dee5a7d6105fccd254517abde3e1d5b475b574a14ae",
+    "model.py": "92b916a98930755b7bb5b7f807b56814a00ffffc9720e5fa5ed96055efcf5279",
+    "plots.py": "3fecf1514bb257be51ada5dd3bc5ad65065e04a6635db9f72ee077a206cb5fa6",
+    "run.py": "782c19560de6e5032a50b143150b44c8d8c39bed93e7c1d7946171b683d686f6"
+  },
+  "parameters": {
+    "absoluteTolerance": 1e-09,
+    "acquisitionDeadline": 12.0,
+    "actuatorTimeConstant": 0.02,
+    "angleResolution": 0.0001,
+    "angleTolerance": 0.05,
+    "angleWeight": 80.0,
+    "angularVelocityWeight": 1.0,
+    "captureAngle": 0.55,
+    "captureSpeed": 2.0,
+    "cartDamping": 0.1,
+    "cartMass": 1.0,
+    "centerOfMass": 0.5,
+    "centeringGain": 0.5,
+    "disturbanceDuration": 0.2,
+    "disturbanceForce": 1.0,
+    "disturbanceStart": 15.0,
+    "energyGain": 3.0,
+    "estimatorTimeConstant": 0.02,
+    "forceLimit": 15.0,
+    "forceWeight": 0.2,
+    "gravity": 9.81,
+    "horizon": 25.0,
+    "initialAngle": 0.0,
+    "initialAngularVelocity": 0.0,
+    "initialPosition": 0.0,
+    "initialVelocity": 0.0,
+    "kickDuration": 0.25,
+    "kickForce": 3.0,
+    "pivotDamping": 0.002,
+    "positionResolution": 0.0001,
+    "positionTolerance": 0.1,
+    "positionWeight": 10.0,
+    "railHalfTravel": 2.5,
+    "recoveryDeadline": 20.0,
+    "relativeTolerance": 1e-07,
+    "releaseAngle": 0.65,
+    "rodMass": 0.2,
+    "samplePeriod": 0.005,
+    "sensorFaultTime": 18.0,
+    "velocityGain": 1.0,
+    "velocityWeight": 1.0
+  },
+  "scenarios": {
+    "nominal": {
+      "observations": {
+        "InvertedPendulum::Experiment::acquiredAndHeld": true,
+        "InvertedPendulum::Experiment::withinTravelAndForce": true
+      },
+      "hold_window": {
+        "since_s": 12.0,
+        "max_cart_m": 0.00024603829803347807,
+        "max_upright_error_rad": 0.00012270649612133866
+      },
+      "completed": true,
+      "capture_s": 1.69,
+      "max_cart_m": 1.7738735874954956,
+      "max_actuator_N": 14.996666878378834,
+      "checks": {
+        "InvertedPendulum::Intent::acquireAndHold": true,
+        "InvertedPendulum::Intent::respectLimits": true
+      }
+    },
+    "disturbance": {
+      "observations": {
+        "InvertedPendulum::Experiment::recoveredAndHeld": true,
+        "InvertedPendulum::Experiment::withinTravelAndForce": true
+      },
+      "hold_window": {
+        "since_s": 20.0,
+        "max_cart_m": 0.0001357144269447184,
+        "max_upright_error_rad": 7.799782211659334e-05
+      },
+      "completed": true,
+      "capture_s": 1.69,
+      "max_cart_m": 1.7738735874954956,
+      "max_actuator_N": 14.996666878378834,
+      "checks": {
+        "InvertedPendulum::Intent::recoverFromPush": true,
+        "InvertedPendulum::Intent::respectLimits": true
+      }
+    },
+    "sensorLoss": {
+      "observations": {
+        "InvertedPendulum::Experiment::disabledOnSensorFault": true
+      },
+      "hold_window": null,
+      "completed": true,
+      "capture_s": 1.69,
+      "max_cart_m": 1.7738735874954956,
+      "max_actuator_N": 14.996666878378834,
+      "checks": {
+        "InvertedPendulum::Intent::sensorLossDisables": true
+      }
+    }
+  },
+  "lqr_gain": [
+    -7.071067811865475,
+    -9.004464120517989,
+    63.2975779382566,
+    15.34603950806748
+  ],
+  "numerics": {
+    "upright_linearization": true,
+    "free_energy_conservation": true,
+    "halved_step_same_acceptance": true,
+    "halved_step_trajectory": true,
+    "energy_drift_J": 2.2533877541697223e-10,
+    "max_refinement_position_m": 0.00034205324204205284,
+    "max_refinement_angle_rad": 0.00015912159424003036
+  }
+}

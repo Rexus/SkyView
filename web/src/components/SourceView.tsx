@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
+import { linter, lintGutter, lintKeymap, setDiagnostics } from '@codemirror/lint'
+import { clearEditedDiagnostics, editorDiagnostics, editorLocation, normalizeSource } from '../sourceDiagnostics'
 import { EditorView, keymap } from '@codemirror/view'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -145,9 +147,15 @@ export default function SourceView({
   onOpenHistory,
   onDownload,
 }: Props) {
-  const [draft, setDraft] = useState(file.content)
+  const [draft, setDraft] = useState(() => normalizeSource(file.content))
   const [dirty, setDirty] = useState(false)
-  const [validating, setValidating] = useState(false)
+  const [validating, setValidating] = useState(true)
+  const [checked, setChecked] = useState<{ source: string; diagnostics: Diagnostic[] } | null>(null)
+  const [validationError, setValidationError] = useState('')
+  const [validationEpoch, setValidationEpoch] = useState(0)
+  const validateRef = useRef(onValidate)
+  const manualValidation = useRef(false)
+  validateRef.current = onValidate
   const viewRef = useRef<EditorView | null>(null)
   const dirtyRef = useRef(dirty)
   const draftRef = useRef(draft)
@@ -161,13 +169,44 @@ export default function SourceView({
 
   useEffect(() => {
     if (!dirty) {
-      setDraft(file.content)
+      setDraft(normalizeSource(file.content))
     }
   }, [file.content, file.revision, dirty])
 
   useEffect(() => {
     onDirtyChange(dirty)
   }, [dirty, onDirtyChange])
+
+  // Every result belongs to an exact draft. Edits, file switches and unmounts
+  // invalidate the old request, including requests that finish out of order.
+  useEffect(() => {
+    let cancelled = false
+    setValidating(true)
+    setValidationError('')
+    setChecked(null)
+    const view = viewRef.current
+    if (view) view.dispatch(setDiagnostics(view.state, []))
+    const delay = manualValidation.current ? 0 : 500
+    manualValidation.current = false
+    const timer = setTimeout(async () => {
+      try {
+        const diagnostics = await validateRef.current(draft)
+        if (!cancelled) setChecked({ source: draft, diagnostics })
+      } catch (err) {
+        if (!cancelled) setValidationError(err instanceof Error ? err.message : String(err))
+      } finally {
+        if (!cancelled) setValidating(false)
+      }
+    }, delay)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [draft, validationEpoch])
+
+  useEffect(() => {
+    const view = viewRef.current
+    if (view && checked?.source === view.state.doc.toString()) {
+      view.dispatch(setDiagnostics(view.state, editorDiagnostics(checked.source, checked.diagnostics)))
+    }
+  }, [checked])
 
   useEffect(() => {
     if (!jumpLine || !viewRef.current) return
@@ -183,21 +222,17 @@ export default function SourceView({
   const save = async () => {
     if (!dirty || saving) return
     try {
-      await onSave(draft)
-      setDirty(false)
+      const source = draftRef.current
+      await onSave(source)
+      if (draftRef.current === source) setDirty(false)
     } catch {
       /* parent reports the error */
     }
   }
 
-  const validate = async () => {
-    if (validating) return
-    setValidating(true)
-    try {
-      await onValidate(draft)
-    } finally {
-      setValidating(false)
-    }
+  const validate = () => {
+    manualValidation.current = true
+    setValidationEpoch(epoch => epoch + 1)
   }
 
   const extensions = useMemo(
@@ -206,6 +241,10 @@ export default function SourceView({
       syntaxHighlighting(highlightStyle),
       cmTheme,
       EditorView.lineWrapping,
+      linter(null),
+      lintGutter({ hoverTime: 300 }),
+      clearEditedDiagnostics,
+      keymap.of(lintKeymap),
       keymap.of([
         {
           key: 'Mod-s',
@@ -219,17 +258,17 @@ export default function SourceView({
     [],
   )
 
-  const diagnostics = file.diagnostics
+  const diagnostics = checked?.source === draft ? checked.diagnostics : []
+  const markers = useMemo(() => editorDiagnostics(draft, diagnostics), [draft, diagnostics])
   const errors = diagnostics.filter((d) => d.severity === 'error').length
   const warnings = diagnostics.filter((d) => d.severity === 'warning').length
 
-  const jump = (line: number) => {
-    const view = viewRef.current
-    if (!view) return
-    const l = view.state.doc.line(Math.max(1, Math.min(line, view.state.doc.lines)))
+  const jump = (index: number) => {
+    const view = viewRef.current, marker = markers[index]
+    if (!view || !marker) return
     view.dispatch({
-      selection: { anchor: l.from },
-      effects: EditorView.scrollIntoView(l.from, { y: 'center' }),
+      selection: { anchor: marker.from, head: marker.to },
+      effects: EditorView.scrollIntoView(marker.from, { y: 'center' }),
     })
     view.focus()
   }
@@ -250,7 +289,7 @@ export default function SourceView({
         )}
         <div className="grow" style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-          {plural(file.content.split('\n').length, 'line')}
+          {plural(draft.split('\n').length, 'line')}
         </span>
         <button className="btn btn-sm" onClick={onOpenHistory}>
           <History size={13} /> History
@@ -258,13 +297,13 @@ export default function SourceView({
         <button className="btn btn-sm" onClick={onDownload}>
           <Download size={13} /> Download
         </button>
-        <button className="btn btn-sm" onClick={() => void validate()} disabled={validating}>
+        <button className="btn btn-sm" onClick={validate}>
           <Info size={13} /> {validating ? 'Checking…' : 'Validate'}
         </button>
         <button
           className="btn btn-sm"
           onClick={() => {
-            setDraft(file.content)
+            setDraft(normalizeSource(file.content))
             setDirty(false)
           }}
           disabled={!dirty}
@@ -294,7 +333,7 @@ export default function SourceView({
           }}
           onChange={(value) => {
             setDraft(value)
-            setDirty(value !== file.content)
+            setDirty(value !== normalizeSource(file.content))
           }}
           onCreateEditor={(view) => {
             viewRef.current = view
@@ -303,8 +342,8 @@ export default function SourceView({
       </div>
 
       <div className="diag-panel">
-        <div className="diag-panel-head">
-          {errors > 0 ? (
+        <div className="diag-panel-head" role="status" aria-live="polite">
+          {validationError || errors > 0 ? (
             <XCircle size={13} className="diag-icon error" />
           ) : warnings > 0 ? (
             <TriangleAlert size={13} className="diag-icon warning" />
@@ -312,8 +351,12 @@ export default function SourceView({
             <CheckCircle2 size={13} style={{ color: 'var(--success)' }} />
           )}
           <span>
-            {diagnostics.length === 0
-              ? 'No diagnostics — the model parses cleanly.'
+            {validating
+              ? 'Checking current source…'
+              : validationError
+              ? `Validation unavailable: ${validationError}`
+              : diagnostics.length === 0
+              ? 'No issues found by SkyView’s partial parser.'
               : `${plural(errors, 'error')}, ${plural(warnings, 'warning')}`}
           </span>
           {diagnostics.length > 0 && (
@@ -321,7 +364,7 @@ export default function SourceView({
           )}
         </div>
         {diagnostics.map((d, i) => (
-          <div key={i} className="diag-item" onClick={() => jump(d.line)}>
+          <button key={i} type="button" className="diag-item" onClick={() => jump(i)} title={markers[i]?.message}>
             <span className={`diag-icon ${d.severity}`}>
               {d.severity === 'error' ? (
                 <XCircle size={12} />
@@ -332,11 +375,11 @@ export default function SourceView({
               )}
             </span>
             <span className="where">
-              {d.line}:{d.column}
+              {editorLocation(draft, markers[i]?.from ?? 0)}
             </span>
-            <span style={{ flex: 1 }}>{d.message}</span>
+            <span style={{ flex: 1 }}>{d.message}{d.hint && <span className="diag-hint">Suggested fix: {d.hint}</span>}</span>
             <CircleAlert size={11} style={{ color: 'var(--text-dim)' }} />
-          </div>
+          </button>
         ))}
       </div>
     </div>

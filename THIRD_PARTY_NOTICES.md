@@ -1477,3 +1477,22 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## Optional pendulum analysis tools
+
+The separate scientific example uses NumPy 2.5.5, SciPy 1.18.1 and Matplotlib 3.11.2.
+They are installed from PyPI by `scripts/pendulum/requirements.txt`; their packages and native
+libraries are not bundled in SkyView's Go executable, web interface or container image.
+NumPy and SciPy use BSD licenses; Matplotlib uses its PSF-based license. Wheel distributions
+include additional dependency notices (including BLAS/LAPACK and runtime libraries); retain all
+of those notices if redistributing the installed environment. The model and scripts require no
+MATLAB/Simulink installation or license. Optional Java validation uses the existing pilot tooling.
+
+- [NumPy license](https://numpy.org/doc/stable/license.html)
+- [SciPy license and project](https://scipy.org/about/)
+- [Matplotlib and bundled component licenses](https://matplotlib.org/stable/project/license.html)
+
+The installed transitive plotting dependencies use permissive licenses: contourpy (BSD-3-Clause),
+cycler (BSD), fonttools (MIT), kiwisolver (BSD), packaging (Apache-2.0 OR BSD-2-Clause),
+Pillow (MIT-CMU), pyparsing (MIT), python-dateutil (BSD-3-Clause), and tzdata (Apache-2.0).
+The run report records numerical library versions; the environment retains its package licenses.

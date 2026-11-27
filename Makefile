@@ -16,13 +16,13 @@ run: build
 	./bin/skyview
 
 test:
-	nix develop --command go test ./...
+	nix develop --command go test ./cmd/... ./internal/... ./examples/...
 
 vet:
-	nix develop --command go vet ./...
+	nix develop --command go vet ./cmd/... ./internal/... ./examples/...
 
 fmt:
-	nix develop --command bash -c 'gofmt -w cmd internal'
+	nix develop --command bash -c 'gofmt -w cmd internal examples'
 
 docker:
 	docker build -t registry.example.com/library/skyview:dev .

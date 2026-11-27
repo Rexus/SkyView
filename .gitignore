@@ -2,7 +2,10 @@ bin/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
-workspace/.skyview/
+workspace/
 *.log
 .DS_Store
 .env
+
+# Optional scientific example bytecode
+scripts/pendulum/__pycache__/

@@ -6,8 +6,8 @@ test:go:
   stage: test
   image: golang:1.24
   script:
-    - go test -timeout 90s ./cmd/... ./internal/...
-    - go vet ./cmd/... ./internal/...
+    - go test -timeout 90s ./cmd/... ./internal/... ./examples/...
+    - go vet ./cmd/... ./internal/... ./examples/...
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -18,10 +18,26 @@ build:web:
   script:
     - cd web
     - npm ci --no-audit --no-fund
+    - npm test
     - npm run build
   artifacts:
     paths:
       - internal/server/dist
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test:pendulum:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - python -m pip install -r scripts/pendulum/requirements.txt
+    - python scripts/pendulum/run.py
+  artifacts:
+    when: always
+    paths:
+      - bin/pendulum-results/
     expire_in: 1 week
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

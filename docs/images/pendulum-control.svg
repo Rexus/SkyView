@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="936pt" height="576pt" viewBox="0 0 936 576" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.11.2, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 576 
+L 936 576 
+L 936 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="InvertedPendulum::ControlLoop::controller">
+    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+     <path d="M 21.282282 320.468327 
+L 191.384758 320.468327 
+Q 197.743729 320.468327 197.743729 314.69618 
+L 197.743729 254.088636 
+Q 197.743729 248.316489 191.384758 248.316489 
+L 21.282282 248.316489 
+Q 14.923311 248.316489 14.923311 254.088636 
+L 14.923311 314.69618 
+Q 14.923311 320.468327 21.282282 320.468327 
+z
+" clip-path="url(#p3061962d1e)" style="fill: #e7f0fc; stroke: #4d719b; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </a>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::actuator">
+    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+     <path d="M 259.743697 320.468327 
+L 429.846174 320.468327 
+Q 436.205145 320.468327 436.205145 314.69618 
+L 436.205145 254.088636 
+Q 436.205145 248.316489 429.846174 248.316489 
+L 259.743697 248.316489 
+Q 253.384726 248.316489 253.384726 254.088636 
+L 253.384726 314.69618 
+Q 253.384726 320.468327 259.743697 320.468327 
+z
+" clip-path="url(#p3061962d1e)" style="fill: #e7f0fc; stroke: #4d719b; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </a>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::sum">
+    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+     <path d="M 498.205113 320.468327 
+L 668.307589 320.468327 
+Q 674.66656 320.468327 674.66656 314.69618 
+L 674.66656 254.088636 
+Q 674.66656 248.316489 668.307589 248.316489 
+L 498.205113 248.316489 
+Q 491.846142 248.316489 491.846142 254.088636 
+L 491.846142 314.69618 
+Q 491.846142 320.468327 498.205113 320.468327 
+z
+" clip-path="url(#p3061962d1e)" style="fill: #e7f0fc; stroke: #4d719b; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </a>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::plant">
+    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+     <path d="M 736.666528 320.468327 
+L 906.769004 320.468327 
+Q 913.127975 320.468327 913.127975 314.69618 
+L 913.127975 254.088636 
+Q 913.127975 248.316489 906.769004 248.316489 
+L 736.666528 248.316489 
+Q 730.307557 248.316489 730.307557 254.088636 
+L 730.307557 314.69618 
+Q 730.307557 320.468327 736.666528 320.468327 
+z
+" clip-path="url(#p3061962d1e)" style="fill: #e7f0fc; stroke: #4d719b; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </a>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::encoders">
+    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+     <path d="M 736.666528 479.202371 
+L 906.769004 479.202371 
+Q 913.127975 479.202371 913.127975 473.430224 
+L 913.127975 412.82268 
+Q 913.127975 407.050533 906.769004 407.050533 
+L 736.666528 407.050533 
+Q 730.307557 407.050533 730.307557 412.82268 
+L 730.307557 473.430224 
+Q 730.307557 479.202371 736.666528 479.202371 
+z
+" clip-path="url(#p3061962d1e)" style="fill: #e7f0fc; stroke: #4d719b; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </a>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::estimator">
+    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+     <path d="M 259.743697 479.202371 
+L 429.846174 479.202371 
+Q 436.205145 479.202371 436.205145 473.430224 
+L 436.205145 412.82268 
+Q 436.205145 407.050533 429.846174 407.050533 
+L 259.743697 407.050533 
+Q 253.384726 407.050533 253.384726 412.82268 
+L 253.384726 473.430224 
+Q 253.384726 479.202371 259.743697 479.202371 
+z
+" clip-path="url(#p3061962d1e)" style="fill: #e7f0fc; stroke: #4d719b; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </a>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::disturbance">
+    <a xlink:href="../../examples/inverted-pendulum/InvertedPendulum.sysml" target="_blank">
+     <path d="M 498.205113 154.5191 
+L 668.307589 154.5191 
+Q 674.66656 154.5191 674.66656 148.746953 
+L 674.66656 88.139409 
+Q 674.66656 82.367262 668.307589 82.367262 
+L 498.205113 82.367262 
+Q 491.846142 82.367262 491.846142 88.139409 
+L 491.846142 148.746953 
+Q 491.846142 154.5191 498.205113 154.5191 
+z
+" clip-path="url(#p3061962d1e)" style="fill: #e7f0fc; stroke: #4d719b; stroke-width: 1.5; stroke-linejoin: miter"/>
+    </a>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::command">
+    <path d="M 199.744007 284.392408 
+Q 225.564169 284.392408 249.70728 284.392408 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+    <path d="M 244.50728 281.792408 
+L 249.70728 284.392408 
+L 244.50728 286.992408 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::driveForce">
+    <path d="M 438.205422 284.392408 
+Q 464.025584 284.392408 488.168695 284.392408 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+    <path d="M 482.968695 281.792408 
+L 488.168695 284.392408 
+L 482.968695 286.992408 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::externalForce">
+    <path d="M 583.256351 156.519966 
+Q 583.256351 201.419526 583.256351 244.642035 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+    <path d="M 585.856351 239.442035 
+L 583.256351 244.642035 
+L 580.656351 239.442035 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::totalForce">
+    <path d="M 676.666838 284.392408 
+Q 702.486999 284.392408 726.63011 284.392408 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+    <path d="M 721.43011 281.792408 
+L 726.63011 284.392408 
+L 721.43011 286.992408 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::trueState">
+    <path d="M 821.717766 322.468532 
+Q 821.717766 363.759303 821.717766 403.373022 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+    <path d="M 824.317766 398.173022 
+L 821.717766 403.373022 
+L 819.117766 398.173022 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::measurements">
+    <path d="M 728.310554 443.126452 
+Q 583.258485 443.126452 439.883467 443.126452 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+    <path d="M 445.083467 445.726452 
+L 439.883467 443.126452 
+L 445.083467 440.526452 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::feedback">
+    <path d="M 251.387723 443.126452 
+Q 179.858843 443.126452 108.329963 443.126452 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="InvertedPendulum::ControlLoop::feedback">
+    <path d="M 106.33352 441.123824 
+Q 106.33352 381.795769 106.33352 324.144766 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+    <path d="M 103.73352 329.344766 
+L 106.33352 324.144766 
+L 108.93352 329.344766 
+" clip-path="url(#p3061962d1e)" style="fill: none; stroke: #397366; stroke-width: 1.5; stroke-linecap: round"/>
+   </g>
+   <g id="text_1">
+    <text style="font-weight: 700; font-size: 19px; font-family: 'DejaVu Sans'; text-anchor: start" x="26.846382" y="31.860975" transform="rotate(-0 26.846382 31.860975)">Inverted pendulum · computational signal loop</text>
+   </g>
+   <g id="text_2">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start" x="26.846382" y="59.278674" transform="rotate(-0 26.846382 59.278674)">InvertedPendulum::ControlLoop · schematic block view derived from native SysML v2</text>
+   </g>
+   <g id="text_3">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="106.33352" y="280.49679" transform="rotate(-0 106.33352 280.49679)">controller : Controller</text>
+   </g>
+   <g id="text_4">
+    <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="106.33352" y="299.544294" transform="rotate(-0 106.33352 299.544294)">Energy shaping / LQR</text>
+   </g>
+   <g id="text_5">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="344.794935" y="280.496399" transform="rotate(-0 344.794935 280.496399)">actuator : Actuator</text>
+   </g>
+   <g id="text_6">
+    <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="344.794935" y="299.544294" transform="rotate(-0 344.794935 299.544294)">Saturation + lag</text>
+   </g>
+   <g id="text_7">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="583.256351" y="280.496399" transform="rotate(-0 583.256351 280.496399)">sum : ForceSum</text>
+   </g>
+   <g id="text_8">
+    <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="583.256351" y="299.544294" transform="rotate(-0 583.256351 299.544294)">+ +</text>
+   </g>
+   <g id="text_9">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="821.717766" y="280.49679" transform="rotate(-0 821.717766 280.49679)">plant : Plant</text>
+   </g>
+   <g id="text_10">
+    <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="821.717766" y="299.544294" transform="rotate(-0 821.717766 299.544294)">Nonlinear dynamics + integration</text>
+   </g>
+   <g id="text_11">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="821.717766" y="439.230833" transform="rotate(-0 821.717766 439.230833)">encoders : Encoders</text>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="821.717766" y="458.278338" transform="rotate(-0 821.717766 458.278338)">Sample + quantize</text>
+   </g>
+   <g id="text_13">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="344.794935" y="439.230833" transform="rotate(-0 344.794935 439.230833)">estimator : Estimator</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="344.794935" y="458.278338" transform="rotate(-0 344.794935 458.278338)">Difference + low-pass</text>
+   </g>
+   <g id="text_15">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="583.256351" y="114.547562" transform="rotate(-0 583.256351 114.547562)">disturbance : Disturbance</text>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #203a5b" x="583.256351" y="133.595067" transform="rotate(-0 583.256351 133.595067)">Horizontal force pulse</text>
+   </g>
+   <g id="text_17">
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #173f36" x="225.564228" y="272.848114" transform="rotate(-0 225.564228 272.848114)">F [N]</text>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #173f36" x="464.025643" y="272.848114" transform="rotate(-0 464.025643 272.848114)">F [N]</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #173f36" x="597.564036" y="201.417794" transform="rotate(-0 597.564036 201.417794)">F [N]</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #173f36" x="702.487058" y="272.848114" transform="rotate(-0 702.487058 272.848114)">F [N]</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; fill: #173f36" transform="translate(836.025451 354.157242)">x, v, θ, ω</text>
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; fill: #173f36" transform="translate(836.025451 363.75943)">[m, m/s, rad, rad/s]</text>
+   </g>
+   <g id="text_22">
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #173f36" x="583.256351" y="431.582158" transform="rotate(-0 583.256351 431.582158)">x [m], θ [rad], valid</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #173f36" x="197.743729" y="466.21504" transform="rotate(-0 197.743729 466.21504)">x, v, θ, ω, valid</text>
+   </g>
+   <g id="text_24">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start" x="26.846382" y="526.101065" transform="rotate(-0 26.846382 526.101065)">Blue blocks: logical responsibilities   •   Green arrows: directed computational signals</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="26.846382" y="552.797245" transform="rotate(-0 26.846382 552.797245)">Connections are not physical power bonds. Plant integration and actuator lag execute in the optional Python runner.</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p3061962d1e">
+   <rect x="3.00024" y="3.00024" width="929.99952" height="569.99952"/>
+  </clipPath>
+ </defs>
+</svg>

@@ -6,6 +6,10 @@ SkyView preserves imported UTF-8 `.sysml` source, including constructs its parse
 project. Import/export is a source-file round trip, not proof of complete SysML support or
 safe bidirectional graphical editing. Keep the project's native validator as the conformance gate.
 
+For a directory containing several models and supporting files, use [project ZIP import/export](projects.md).
+CLI `import` and `export` accept `-project ID` to address a selected project and `-name models/Plant.sysml`
+for nested paths. Without `-project`, existing legacy-workspace behavior is retained.
+
 ## Contents
 
 - [Exchange source](#exchange-source)

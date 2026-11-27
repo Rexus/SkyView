@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Rexus/SkyView/internal/projects"
 	"github.com/Rexus/SkyView/internal/sysml"
 	"github.com/Rexus/SkyView/internal/views"
 )
@@ -40,6 +41,7 @@ func run(args []string, out, errOut io.Writer) error {
 	view := f.String("view", "", "selected shared view ID")
 	viewsOut := f.String("views-out", "", "export shared-view JSON to this new file")
 	name := f.String("name", "", "workspace .sysml filename")
+	project := f.String("project", "", "project ID for import/export; omit for legacy workspace")
 	base := f.String("url", "http://127.0.0.1:8081", "SkyView server URL")
 	check := f.Bool("check", false, "render: fail if the output differs, without writing")
 	if err := f.Parse(args[1:]); err != nil {
@@ -50,6 +52,13 @@ func run(args []string, out, errOut io.Writer) error {
 	}
 	if f.NArg() != 0 {
 		return fmt.Errorf("unexpected positional arguments")
+	}
+	apiBase := strings.TrimRight(*base, "/") + "/api"
+	if *project != "" {
+		if !projects.ValidID(*project) {
+			return fmt.Errorf("invalid project ID")
+		}
+		apiBase += "/projects/" + url.PathEscape(*project)
 	}
 	switch cmd {
 	case "inspect", "render", "import":
@@ -119,14 +128,14 @@ func run(args []string, out, errOut io.Writer) error {
 		if err = validName(*name); err != nil {
 			return err
 		}
-		endpoint := strings.TrimRight(*base, "/") + "/api/files/" + url.PathEscape(*name)
+		endpoint := apiBase + "/files/" + url.PathEscape(*name)
 		current, status, err := request("GET", endpoint+"/download", nil, "")
 		if err != nil {
 			return err
 		}
 		if status == 404 {
 			payload, _ := json.Marshal(map[string]string{"name": *name, "content": string(b)})
-			_, status, err = request("POST", strings.TrimRight(*base, "/")+"/api/files", payload, "")
+			_, status, err = request("POST", apiBase+"/files", payload, "")
 			if err != nil {
 				return err
 			}
@@ -169,7 +178,7 @@ func run(args []string, out, errOut io.Writer) error {
 		if *viewsOut != "" && filepath.Clean(*viewsOut) == filepath.Clean(*dest) {
 			return fmt.Errorf("model and view outputs must differ")
 		}
-		endpoint := strings.TrimRight(*base, "/") + "/api/files/" + url.PathEscape(*name)
+		endpoint := apiBase + "/files/" + url.PathEscape(*name)
 		b, status, err := request("GET", endpoint+"/download", nil, "")
 		if err != nil {
 			return err
@@ -215,16 +224,12 @@ func readSource(p string) ([]byte, error) {
 	return b, nil
 }
 func validName(s string) error {
-	if !strings.HasSuffix(s, ".sysml") || strings.HasPrefix(s, ".") || len(s) > 120 {
-		return fmt.Errorf("invalid .sysml filename")
-	}
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-", r)) {
-			return fmt.Errorf("invalid .sysml filename")
-		}
+	if !projects.ModelPath(s) {
+		return fmt.Errorf("invalid project-relative .sysml path")
 	}
 	return nil
 }
+
 func writeNew(p string, b []byte) error {
 	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {

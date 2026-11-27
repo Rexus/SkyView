@@ -5,17 +5,17 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
+	"github.com/Rexus/SkyView/internal/projects"
 	"github.com/Rexus/SkyView/internal/views"
 )
 
 func (s *Server) viewsPath(name string) (string, error) {
-	if !validFileName(name) {
+	if _, err := s.filePath(name); err != nil {
 		return "", fmt.Errorf("invalid model file name")
 	}
-	return filepath.Join(s.workspace, strings.TrimSuffix(name, ".sysml")+".views.json"), nil
+	return projects.Resolve(s.workspace, strings.TrimSuffix(name, ".sysml")+".views.json")
 }
 func (s *Server) handleViews(w http.ResponseWriter, r *http.Request) {
 	p, err := s.viewsPath(r.PathValue("name"))

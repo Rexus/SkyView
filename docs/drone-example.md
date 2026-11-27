@@ -1,6 +1,6 @@
 # Explore the inspection drone
 
-[Back to SkyView](../README.md) · [Native model](../workspace/InspectionDrone.sysml)
+[Back to SkyView](../README.md) · [Native model](../examples/inspection-drone/InspectionDrone.sysml)
 
 This fictional inspection quadcopter is a small, connected example for exploring SkyView and finding
 gaps in its SysML v2 support. A pilot uploads a waypoint mission, the vehicle captures an image, and
@@ -10,13 +10,10 @@ defaults, regulatory limits or a complete aircraft design.
 
 ## Open it
 
-Start SkyView from the repository root using the [local run guide](local-development.md), then select
-`InspectionDrone.sysml` in the model selector. It lives in the default `workspace/` directory.
-
-For an existing Docker/Podman volume or a different workspace, use **Import** in the top toolbar and
-choose `workspace/InspectionDrone.sysml` from your checkout. The container's empty-workspace seed
-remains the original example. Import under a different name if you already have an edited drone model.
-Make a copy before experimenting; editing the default workspace file also changes your Git checkout.
+Start SkyView using the [local run guide](local-development.md), choose **Projects → Examples**,
+and click **Use example** for **Inspection drone**. The model opens as an independent editable copy;
+the bundled template remains available. This works identically in Go, Docker and Podman builds.
+See [projects](projects.md) to upload a directory, import a repository or export your changes.
 
 1. Open **Diagram**, select scope **InspectionDrone::Drone**, and use **Interconnection**.
    Five subsystem nodes and four links show navigation, battery, controller, camera and propulsion.
@@ -87,7 +84,7 @@ Checked on 2026-11-27 after the parser fix. The model is unchanged (SHA-256 pref
 - Sequence, activity and state-diagram views, constraint evaluation and verification execution are
   **not implemented**. The grid and inspector expose supported expressions and relationships; use
   the generated sequence preview for the interaction picture. Parsing is not execution or full OMG
-  conformance. Library recognition is limited to supported scalar types, `ISQ::DurationValue` and `SI::s`.
+  conformance. Library recognition is a finite subset; see the current [language boundaries](../README.md#language-support).
 
 Try the following on a disposable copy. These are manual regression ideas, not claims that every
 editing path has passed:
@@ -115,7 +112,7 @@ Set `SYSML_JAVA` to the Java executable, `SYSML_KERNEL` to `jupyter-sysml-kernel
 From the repository root in PowerShell:
 
 ```powershell
-& $env:SYSML_JAVA -cp $env:SYSML_KERNEL scripts/ExportSysML.java $env:SYSML_LIBRARY workspace/InspectionDrone.sysml InspectionDrone bin/drone-native.json
+& $env:SYSML_JAVA -cp $env:SYSML_KERNEL scripts/ExportSysML.java $env:SYSML_LIBRARY examples/inspection-drone/InspectionDrone.sysml InspectionDrone bin/drone-native.json
 if ($LASTEXITCODE -ne 0) { throw 'Native SysML validation failed' }
 python scripts/render-drone-sequence.py bin/drone-native.json docs/images/drone-sequence.svg
 ```

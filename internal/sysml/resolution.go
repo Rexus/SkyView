@@ -90,7 +90,8 @@ func libraryType(path string) bool {
 	if strings.HasPrefix(path, "ScalarValues::") {
 		return scalarTypes[strings.TrimPrefix(path, "ScalarValues::")]
 	}
-	return path == "ISQ::DurationValue"
+	_, ok := quantityTypes[path]
+	return ok
 }
 
 func (p *parser) resolveType(e *Element, path string) string {

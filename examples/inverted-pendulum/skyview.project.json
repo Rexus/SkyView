@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Inverted pendulum",
+  "origin": {
+    "kind": "example",
+    "example": "inverted-pendulum"
+  }
+}

@@ -51,12 +51,16 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validFileName(req.Name) {
-		writeError(w, http.StatusBadRequest, "invalid file name; use letters, digits, dots, dashes and underscores, ending in .sysml", nil)
+		writeError(w, http.StatusBadRequest, "invalid model path; use a project-relative path ending in .sysml", nil)
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	path, _ := s.filePath(req.Name)
+	path, pathErr := s.filePath(req.Name)
+	if pathErr != nil {
+		writeError(w, http.StatusBadRequest, pathErr.Error(), nil)
+		return
+	}
 	if _, err := os.Stat(path); err == nil {
 		writeError(w, http.StatusConflict, "a file with that name already exists", nil)
 		return

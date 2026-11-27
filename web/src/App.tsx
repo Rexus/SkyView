@@ -1,3 +1,5 @@
+import ProjectBar from './components/ProjectBar'
+import { PROJECT_ID } from './api'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCheck,
@@ -418,21 +420,10 @@ export default function App() {
 
   const handleValidate = useCallback(
     async (content: string): Promise<import('./types').Diagnostic[]> => {
-      if (!file) return []
-      try {
-        const diags = await validateFile(file.name, content)
-        const errors = diags.filter((d) => d.severity === 'error').length
-        const warnings = diags.filter((d) => d.severity === 'warning').length
-        if (errors) pushToast('error', `${plural(errors, 'error')} found`)
-        else if (warnings) pushToast('info', `${plural(warnings, 'warning')} found`)
-        else pushToast('success', 'Model validates cleanly')
-        return diags
-      } catch (err) {
-        pushToast('error', err instanceof Error ? err.message : String(err))
-        return []
-      }
+      if (!file) throw new Error('No model selected')
+      return validateFile(file.name, content)
     },
-    [file, pushToast],
+    [file?.name],
   )
 
   const handleRestore = useCallback(
@@ -822,6 +813,8 @@ export default function App() {
         }}
       />
 
+      <ProjectBar sourceDirty={sourceDirty} saving={saving} />
+
       <div className="shell">
         <Sidebar
           model={file?.model ?? null}
@@ -940,6 +933,7 @@ export default function App() {
             />
           ) : (
             <SourceView
+              key={`${PROJECT_ID}:${file.name}`}
               file={file}
               jumpLine={jumpLine}
               jumpNonce={jumpNonce}
@@ -992,7 +986,7 @@ export default function App() {
             <Upload size={34} />
             <div style={{ fontWeight: 650, fontSize: 16 }}>Drop .sysml files to import</div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              They will be added to the workspace and opened in SkyView.
+              They will be added to the selected project and opened in SkyView.
             </div>
           </div>
         </div>

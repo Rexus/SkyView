@@ -6,7 +6,8 @@ import type {
   Revision,
 } from './types'
 
-const BASE = '/api'
+export const PROJECT_ID = new URLSearchParams(location.search).get('project') || 'workspace'
+export const API_BASE = `/api/projects/${encodeURIComponent(PROJECT_ID)}`
 
 class ApiError extends Error {
   diagnostics?: unknown
@@ -20,7 +21,7 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, {
+  const res = await fetch(API_BASE + path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -51,7 +52,7 @@ export function saveFile(name: string, content: string): Promise<FileResponse> {
   })
 }
 
-export function createFile(name: string, content = ''): Promise<FileResponse> {
+export function createFile(name: string, content?: string): Promise<FileResponse> {
   return request<FileResponse>('/files', {
     method: 'POST',
     body: JSON.stringify({ name, content }),
@@ -161,7 +162,7 @@ export async function validateFile(name: string, content: string): Promise<Diagn
 }
 
 export function downloadUrl(name: string): string {
-  return `${BASE}/files/${encodeURIComponent(name)}/download`
+  return `${API_BASE}/files/${encodeURIComponent(name)}/download`
 }
 
 export { ApiError }

@@ -9,6 +9,8 @@ const (
 
 // Diagnostic is a parse or semantic message tied to a source location.
 type Diagnostic struct {
+	Range     *Span  `json:"range,omitempty"`
+	Hint      string `json:"hint,omitempty"`
 	Severity  string `json:"severity"`
 	Message   string `json:"message"`
 	Line      int    `json:"line"`

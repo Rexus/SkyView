@@ -188,3 +188,40 @@ func TestRenderCannotOverwriteSourceAlias(t *testing.T) {
 		t.Fatal("render overwrote original source")
 	}
 }
+
+func TestProjectCLIExchange(t *testing.T) {
+	dir := t.TempDir()
+	s := server.New(filepath.Join(dir, "workspace"))
+	local := filepath.Join(dir, "cart")
+	if err := os.Mkdir(local, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ConfigureProject("cart", local); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	src, cfg := filepath.Join(dir, "Input.sysml"), filepath.Join(dir, "Input.views.json")
+	put(t, src, []byte(source))
+	cb, _ := json.Marshal(fixture())
+	put(t, cfg, cb)
+	invoke(t, 0, "import", "-url", srv.URL, "-project", "local-cart", "-name", "models/Model.sysml", "-in", src, "-views", cfg)
+	out, vout := filepath.Join(dir, "Output.sysml"), filepath.Join(dir, "Output.views.json")
+	invoke(t, 0, "export", "-url", srv.URL, "-project", "local-cart", "-name", "models/Model.sysml", "-out", out, "-views-out", vout)
+	got, _ := os.ReadFile(out)
+	if string(got) != source {
+		t.Fatal("project CLI changed source")
+	}
+	got, _ = os.ReadFile(vout)
+	if !bytes.Equal(got, cb) {
+		t.Fatal("project CLI changed views")
+	}
+	response, err := http.Get(srv.URL + "/api/projects/local-cart/files/models%2FModel.sysml/views/overall")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Fatal("project shared view did not render")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/Rexus/SkyView/examples"
 	"io/fs"
 	"log"
 	"net/http"
@@ -16,19 +17,23 @@ import (
 //go:embed dist
 var distFS embed.FS
 
-//go:embed sample.sysml
-var sampleModel []byte
+// The legacy workspace seed uses the same authoritative starter as the picker.
+var sampleModel = examples.Starter()
 
 // Server is the SkyView HTTP application.
 type Server struct {
-	workspace string
-	mu        sync.Mutex
+	workspace      string
+	mu             sync.Mutex
+	catalogMu      sync.Mutex
+	projectServers map[string]*Server
+	localProjects  map[string]localProject
+	recursive      bool
 }
 
 // New creates a server rooted at the given workspace directory. If the
 // workspace has no SysML files, the bundled example sample is seeded.
 func New(workspace string) *Server {
-	s := &Server{workspace: workspace}
+	s := &Server{workspace: workspace, projectServers: map[string]*Server{}, localProjects: map[string]localProject{}}
 	if err := s.ensureWorkspace(); err != nil {
 		log.Printf("workspace: %v", err)
 	}
@@ -40,27 +45,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", s.handleHealth)
-	mux.HandleFunc("GET /api/files/{name}/views", s.handleViews)
-	mux.HandleFunc("PUT /api/files/{name}/views", s.handlePutViews)
-	mux.HandleFunc("GET /api/files/{name}/views/{view}", s.handleViewSVG)
-	mux.HandleFunc("GET /api/files", s.handleListFiles)
-	mux.HandleFunc("POST /api/files", s.handleCreateFile)
-	mux.HandleFunc("GET /api/files/{name}", s.handleGetFile)
-	mux.HandleFunc("PUT /api/files/{name}", s.handleSaveFile)
-	mux.HandleFunc("DELETE /api/files/{name}", s.handleDeleteFile)
-	mux.HandleFunc("GET /api/files/{name}/download", s.handleDownloadFile)
-	mux.HandleFunc("POST /api/files/{name}/validate", s.handleValidate)
-
-	mux.HandleFunc("POST /api/files/{name}/element", s.handleAddElement)
-	mux.HandleFunc("PATCH /api/files/{name}/element", s.handlePatchElement)
-	mux.HandleFunc("DELETE /api/files/{name}/element", s.handleDeleteElement)
-	mux.HandleFunc("POST /api/files/{name}/connection", s.handleAddConnection)
-	mux.HandleFunc("POST /api/files/{name}/satisfy", s.handleAddSatisfy)
-
-	mux.HandleFunc("GET /api/files/{name}/layout", s.handleGetLayout)
-	mux.HandleFunc("PUT /api/files/{name}/layout", s.handlePutLayout)
-	mux.HandleFunc("GET /api/files/{name}/history", s.handleHistory)
-	mux.HandleFunc("POST /api/files/{name}/restore", s.handleRestore)
+	s.registerFileRoutes(mux)
+	s.registerProjectRoutes(mux)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "unknown API endpoint", nil)
