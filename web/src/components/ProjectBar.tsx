@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, Upload, GitBranch, Download, Boxes, FolderInput } from 'lucide-react'
+import { Plus, Upload, GitBranch, Download, Boxes, Settings2, Trash2 } from 'lucide-react'
 import { PROJECT_ID, WORKSPACE_ID } from '../api'
-import { createProject, createWorkspace, importRepository, moveProject, projectRequest, uploadProject, type ExampleInfo, type ProjectInfo, type WorkspaceInfo } from '../projects'
+import { createProject, createWorkspace, importRepository, projectRequest, removeProject, removeWorkspace, renameWorkspace, updateProject, uploadProject, type ExampleInfo, type ProjectInfo, type WorkspaceInfo } from '../projects'
 import Modal from './Modal'
 import { ConfirmModal } from './modals'
 import ActionMenu from './ActionMenu'
@@ -13,15 +13,35 @@ type Selection = { workspaceId: string; projectId?: string }
 const defaultWorkspace: WorkspaceInfo = { id: 'default', name: 'Default workspace' }
 const projectWorkspace = (project: ProjectInfo) => project.workspaceId || defaultWorkspace.id
 
+type Dialog = 'addProject' | 'addWorkspace' | 'workspaceSettings' | 'projectSettings'
+type CatalogItem = 'workspace' | 'project'
+
+function CatalogControls({ kind, onAdd, addDisabled, menu, children }: {
+  kind: CatalogItem
+  onAdd: () => void
+  addDisabled: boolean
+  menu: ReactNode
+  children: ReactNode
+}) {
+  const add = kind === 'workspace' ? 'New workspace' : 'Add project'
+  const actions = kind === 'workspace' ? 'Workspace actions' : 'Project actions'
+  return <div className="catalog-controls">
+    {children}
+    <button type="button" className="icon-button tooltip" aria-label={add} data-tip={add}
+      disabled={addDisabled} onClick={onAdd}><Plus size={16} /></button>
+    <ActionMenu label={actions} iconOnly>{menu}</ActionMenu>
+  </div>
+}
+
 export default function ProjectBar({ sourceDirty, saving, workspaceHost }: { sourceDirty: boolean; saving: boolean; workspaceHost?: HTMLElement | null }) {
   const [projects, setProjects] = useState<ProjectInfo[]>([])
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([defaultWorkspace])
   const [catalogReady, setCatalogReady] = useState(false)
-  const [workspaceDialog, setWorkspaceDialog] = useState<'create' | 'move' | null>(null)
-  const [workspaceName, setWorkspaceName] = useState('')
+  const [dialog, setDialog] = useState<Dialog | null>(null)
+  const [removing, setRemoving] = useState<CatalogItem | null>(null)
+  const [settingsName, setSettingsName] = useState('')
   const [destination, setDestination] = useState('')
   const [examples, setExamples] = useState<ExampleInfo[]>([])
-  const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<Mode>('examples')
   const [name, setName] = useState('')
   const [repository, setRepository] = useState('')
@@ -31,7 +51,7 @@ export default function ProjectBar({ sourceDirty, saving, workspaceHost }: { sou
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [pending, setPending] = useState<Selection | null>(null)
-  const close = useCallback(() => { if (!busy) setOpen(false) }, [busy])
+  const close = useCallback(() => { if (!busy) setDialog(null) }, [busy])
 
   useEffect(() => {
     let active = true
@@ -53,7 +73,9 @@ export default function ProjectBar({ sourceDirty, saving, workspaceHost }: { sou
   const activeWorkspace = workspaces.find(workspace => workspace.id === workspaceId)
   const workspaceProjects = projects.filter(project => projectWorkspace(project) === workspaceId)
   const projectDestination = workspaceId === defaultWorkspace.id ? undefined : workspaceId
-  const canMove = current && !['legacy', 'local'].includes(current.origin.kind) && workspaces.length > 1
+  const managedProject = !!current && !['legacy', 'local'].includes(current.origin.kind)
+  const canRemoveWorkspace = !!activeWorkspace && workspaceId !== defaultWorkspace.id && !workspaceProjects.length
+  const controlsDisabled = !catalogReady || busy || saving
   const navigate = ({ workspaceId, projectId }: Selection) => {
     // Each page keeps its original project-scoped API base until navigation.
     const url = new URL(location.href)
@@ -85,31 +107,52 @@ export default function ProjectBar({ sourceDirty, saving, workspaceHost }: { sou
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(false) }
   }
-  const openWorkspaceDialog = (mode: 'create' | 'move') => {
+  const openDialog = (next: Dialog) => {
     setError('')
-    setWorkspaceName('')
-    setDestination(workspaces.find(workspace => workspace.id !== workspaceId)?.id ?? '')
-    setWorkspaceDialog(mode)
+    setSettingsName(next === 'workspaceSettings' ? activeWorkspace?.name ?? '' :
+      next === 'projectSettings' ? current?.name ?? '' : '')
+    setDestination(workspaceId)
+    setDialog(next)
   }
-  const submitWorkspace = async (event: FormEvent) => {
+  const submitSettings = async (event: FormEvent) => {
     event.preventDefault()
-    setBusy(true); setError('')
+    if (busy || saving) return
+    setBusy(true)
+    setError('')
     try {
-      if (workspaceDialog === 'create') {
-        const workspace = await createWorkspace(workspaceName)
-        setWorkspaces(current => [...current, workspace])
-        setWorkspaceDialog(null)
+      if (dialog === 'addWorkspace') {
+        const workspace = await createWorkspace(settingsName)
+        setWorkspaces(list => [...list, workspace])
         switchTo({ workspaceId: workspace.id })
-      } else if (current && destination) {
-        const moved = await moveProject(current.id, destination)
-        setProjects(projects => projects.map(project => project.id === moved.id ? moved : project))
+      } else if (dialog === 'workspaceSettings' && activeWorkspace) {
+        const workspace = await renameWorkspace(activeWorkspace.id, settingsName)
+        setWorkspaces(list => list.map(item => item.id === workspace.id ? workspace : item))
+      } else if (dialog === 'projectSettings' && current) {
+        const updated = await updateProject(current.id, settingsName, destination)
+        setProjects(list => list.map(item => item.id === updated.id ? updated : item))
         const url = new URL(location.href)
-        url.searchParams.set('workspace', projectWorkspace(moved))
+        url.searchParams.set('workspace', projectWorkspace(updated))
         window.history.replaceState(null, '', url)
-        setWorkspaceDialog(null)
       }
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
-    finally { setBusy(false) }
+      setDialog(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const removeSelected = async () => {
+    if (busy || saving) throw new Error('Wait for the current operation to finish.')
+    if (removing === 'workspace' && activeWorkspace) {
+      await removeWorkspace(activeWorkspace.id)
+      const preferred = projects.find(project => projectWorkspace(project) === defaultWorkspace.id)
+      navigate({ workspaceId: defaultWorkspace.id, projectId: preferred?.id })
+    } else if (removing === 'project' && current) {
+      if (sourceDirty) throw new Error('Save or discard your changes before removing this project.')
+      await removeProject(current.id)
+      const next = workspaceProjects.find(project => project.id !== current.id)
+      navigate({ workspaceId, projectId: next?.id })
+    }
   }
   const exportSaved = async () => {
     setBusy(true); setError('')
@@ -137,39 +180,49 @@ export default function ProjectBar({ sourceDirty, saving, workspaceHost }: { sou
   return <>
     {workspaceHost && createPortal(<div className="workspace-picker">
       <label htmlFor="active-workspace">Workspace</label>
-      <select id="active-workspace" className="input" value={workspaceId} disabled={!catalogReady || busy || saving} onChange={e => switchWorkspace(e.target.value)}>
-        {!activeWorkspace && <option value={workspaceId}>{catalogReady ? 'Unavailable workspace' : 'Loading workspaces…'}</option>}
-        {workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-      </select>
+      <CatalogControls kind="workspace" onAdd={() => openDialog('addWorkspace')} addDisabled={controlsDisabled}
+        menu={<>
+          <button disabled={controlsDisabled || !activeWorkspace} onClick={() => openDialog('workspaceSettings')}>
+            <Settings2 size={14} /> Workspace settings
+          </button>
+          <button className="menu-destructive" disabled={controlsDisabled || !canRemoveWorkspace}
+            title={workspaceId === defaultWorkspace.id ? 'The default workspace is required' :
+              workspaceProjects.length ? 'Move or remove its projects first' : undefined}
+            onClick={() => setRemoving('workspace')}><Trash2 size={14} /> Remove workspace</button>
+        </>}>
+        <select id="active-workspace" className="input" value={workspaceId} disabled={controlsDisabled} onChange={e => switchWorkspace(e.target.value)}>
+          {!activeWorkspace && <option value={workspaceId}>{catalogReady ? 'Unavailable workspace' : 'Loading workspaces…'}</option>}
+          {workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+        </select>
+      </CatalogControls>
     </div>, workspaceHost)}
     <div className="project-bar">
       <label className="pane-heading" htmlFor="active-project">Project</label>
-      <div className="project-picker-row">
-      <select id="active-project" className="input" value={PROJECT_ID} disabled={!catalogReady || busy || saving || !workspaceProjects.length} onChange={e => switchProject(e.target.value)}>
-        {!current && <option value={PROJECT_ID}>{!catalogReady ? 'Loading projects…' : PROJECT_ID ? 'Unavailable project' : workspaceProjects.length ? 'Choose a project' : 'No projects yet'}</option>}
-        {workspaceProjects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
-      </select>
-        <ActionMenu label="Workspace and project actions" iconOnly>
-          <button disabled={!catalogReady || busy || saving} onClick={() => openWorkspaceDialog('create')}>
-            <Plus size={14} /> New workspace
+      <CatalogControls kind="project" onAdd={() => openDialog('addProject')} addDisabled={controlsDisabled || !activeWorkspace}
+        menu={<>
+          <button disabled={controlsDisabled || !managedProject} onClick={() => openDialog('projectSettings')}>
+            <Settings2 size={14} /> Project settings
           </button>
-          <button disabled={!current || busy || saving} onClick={() => void exportSaved()}>
+          <button disabled={controlsDisabled || !current} onClick={() => void exportSaved()}>
             <Download size={14} /> Export project
           </button>
-          {canMove && <button disabled={busy || saving} onClick={() => openWorkspaceDialog('move')}>
-            <FolderInput size={14} /> Move project
-          </button>}
-        </ActionMenu>
-      </div>
-      <button className="project-add" disabled={!activeWorkspace || busy || saving || !catalogReady}
-        onClick={() => { setError(''); setOpen(true) }}><Plus size={14} /> Add project</button>
+          <button className="menu-destructive" disabled={controlsDisabled || !managedProject || sourceDirty}
+            title={sourceDirty ? 'Save or discard your changes first' : undefined} onClick={() => setRemoving('project')}>
+            <Trash2 size={14} /> Remove project
+          </button>
+        </>}>
+        <select id="active-project" className="input" value={PROJECT_ID} disabled={controlsDisabled || !workspaceProjects.length} onChange={e => switchProject(e.target.value)}>
+          {!current && <option value={PROJECT_ID}>{!catalogReady ? 'Loading projects…' : PROJECT_ID ? 'Unavailable project' : workspaceProjects.length ? 'Choose a project' : 'No projects yet'}</option>}
+          {workspaceProjects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
+        </select>
+      </CatalogControls>
       {current?.origin.kind === 'git' && <span className="project-origin" title={`${current.origin.repository} · ${current.origin.commit}`}>
         <GitBranch size={13} /> {current.origin.ref} · {current.origin.commit?.slice(0, 8)} · {current.origin.directory}
       </span>}
       {current?.origin.kind === 'local' && <span className="project-origin">Server folder · edits saved directly</span>}
-      {error && !open && !workspaceDialog && <span role="alert" className="form-error">{error}</span>}
+      {error && !dialog && <span role="alert" className="form-error">{error}</span>}
     </div>
-    {open && <Modal title="Add project" subtitle={`Add a project to ${activeWorkspace?.name ?? workspaceId}.`} wide onClose={close}>
+    {dialog === 'addProject' && <Modal title="Add project" subtitle={`Add a project to ${activeWorkspace?.name ?? workspaceId}.`} wide onClose={close}>
       <div className="project-tabs" role="tablist" aria-label="Add a project">
         {([['examples', Boxes, 'Examples'], ['new', Plus, 'New project'], ['upload', Upload, 'Upload ZIP'], ['git', GitBranch, 'Git snapshot']] as const).map(([value, Icon, title]) =>
           <button type="button" role="tab" aria-selected={mode === value} className={`btn ${mode === value ? 'btn-primary' : ''}`} key={value} disabled={busy} onClick={() => { setMode(value); setError('') }}><Icon size={14} /> {title}</button>)}
@@ -200,21 +253,33 @@ export default function ProjectBar({ sourceDirty, saving, workspaceHost }: { sou
       {error && <p className="form-error" role="alert">{error}</p>}
       <p className="form-hint project-local-note">Server folders and existing Git checkouts can also be made available by the person running SkyView.</p>
     </Modal>}
-    {workspaceDialog && <Modal title={workspaceDialog === 'create' ? 'New workspace' : 'Move project'} onClose={() => { if (!busy) setWorkspaceDialog(null) }}>
-      <form className="project-form" onSubmit={event => void submitWorkspace(event)}>
-        {workspaceDialog === 'create' ? <label className="field">
-          <span className="field-label">Workspace name</span>
-          <input className="input" required maxLength={120} disabled={busy} value={workspaceName} onChange={event => setWorkspaceName(event.target.value)} />
-        </label> : <label className="field">
-          <span className="field-label">Move {current?.name} to</span>
-          <select className="input" required disabled={busy} value={destination} onChange={event => setDestination(event.target.value)}>
-            {workspaces.filter(workspace => workspace.id !== workspaceId).map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+    {dialog && dialog !== 'addProject' && <Modal
+      title={dialog === 'addWorkspace' ? 'New workspace' : dialog === 'workspaceSettings' ? 'Workspace settings' : 'Project settings'}
+      onClose={close}>
+      <form className="project-form" onSubmit={event => void submitSettings(event)}>
+        <label className="field">
+          <span className="field-label">{dialog === 'projectSettings' ? 'Project name' : 'Workspace name'}</span>
+          <input className="input" required maxLength={120} disabled={busy}
+            value={settingsName} onChange={event => setSettingsName(event.target.value)} />
+        </label>
+        {dialog === 'projectSettings' && <label className="field">
+          <span className="field-label" id="project-settings-workspace-label">Workspace</span>
+          <select className="input" aria-labelledby="project-settings-workspace-label" required disabled={busy} value={destination} onChange={event => setDestination(event.target.value)}>
+            {workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
           </select>
         </label>}
         {error && <p role="alert" className="form-error">{error}</p>}
-        <button className="btn btn-primary" type="submit" disabled={busy || saving}>{workspaceDialog === 'create' ? 'Create workspace' : 'Move project'}</button>
+        <button className="btn btn-primary" type="submit" disabled={busy || saving}>
+          {dialog === 'addWorkspace' ? 'Create workspace' : 'Save changes'}
+        </button>
       </form>
     </Modal>}
+    {removing && <ConfirmModal
+      title={removing === 'workspace' ? 'Remove workspace?' : 'Remove project?'}
+      confirmLabel={removing === 'workspace' ? 'Remove workspace' : 'Remove project'}
+      message={removing === 'workspace' ? `Remove “${activeWorkspace?.name}” from the workspace selector?` :
+        `Remove “${current?.name}” from this workspace? Saved files are retained on the server.`}
+      onClose={() => setRemoving(null)} onConfirm={removeSelected} />}
     {pending && <ConfirmModal title="Discard unsaved changes?" message="Switching will discard the unsaved changes in the current project." confirmLabel="Discard and switch" danger={false} onClose={() => setPending(null)} onConfirm={async () => navigate(pending)} />}
   </>
 }

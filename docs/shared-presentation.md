@@ -34,9 +34,13 @@ does not run auto layout; other SkyView instances display its saved geometry.
    order. Horizontal, Vertical and Grid still specify deliberate arrangements. **Arrange contents**
    applies the selected container
    locally, then fits its ancestors and surrounding groups while preserving peers' internal layouts.
-6. **Save views** publishes the validated draft. **Revert** restores the saved sidecar. Download the SVG
-   or view JSON, or export the saved project ZIP. Re-import that project on another instance to retain
-   the model, view choices and geometry.
+6. Drag a box to place it. The canvas expands in any direction. A drop that overlaps another box
+   or leaves its containing group returns that box to its previous position. Valid moves save on
+   release when they can be applied to the saved view. Select **Diagram actions → Undo last move**
+   or press **Ctrl+Z** (**Cmd+Z** on macOS) to reverse the last move in the open view.
+7. **Save views** publishes other validated draft edits, including moves that depend on a draft-only
+   box or arrangement. **Diagram actions → Discard draft changes** discards the remaining draft. The same menu
+   offers SVG and view JSON downloads. Export the project ZIP to carry the saved geometry to another instance.
 
 While a preview is being checked, the last validated diagram stays visible with an updating message;
 saving waits for the current draft to pass. Settings remain reachable through the **Layout target** selector when a draft cannot render. Error messages
@@ -93,7 +97,7 @@ Single-click a diagram in the project tree or picker to browse it. Double-click 
 related diagram in a tab. Right-click a model, package, or view in **Projects** and choose **Open in
 new tab** to keep that diagram open. The dot marks an unsaved layout. Switching tabs keeps drafts
 while you work, including across source files in the same project. **Save views** saves the layouts for
-that source file. **Revert** restores the selected view. Right-click a tab for **Close**, **Close others**,
+that source file. **Diagram actions → Revert** restores the selected view. Right-click a tab for **Close**, **Close others**,
 and **Close all**. SkyView asks before a close would discard a draft. The diagram picker and project tree
 can reopen closed diagrams. Source edits in Split stay open while switching diagrams for the same file.
 
@@ -126,7 +130,8 @@ Use `Model.views.json` beside `Model.sysml`, including inside project subdirecto
 | `nodes[].element`, `edges[].element` | Unique native short name or qualified name; no duplicated semantic elements |
 | `nodes[].parent` | Native container selector or annotation ID; native nesting must agree with model ownership |
 | `boundaries[]` | Annotation `id`, `label`, optional `kind` (`tier`, `zone`, `network`, `group`), geometry and parent |
-| `x`, `y`, `width`, `height` | Absolute canvas coordinates, including nested members |
+| `origin`, `width`, `height` | View extent. The optional `origin` coordinate pair defaults to `[0, 0]`. |
+| `nodes[].x`, `nodes[].y` and boundary coordinates | Absolute positions, including nested members. Positions may be negative. |
 | `layout` | Local `pattern`, `direction`, `columns`, `gap`, `padding`, `locked`; root settings belong to the view |
 | `styles` | File-level named palettes with six-digit hex `fill`, `stroke`, `color` and optional numeric `dash` |
 | `nodes[].style`, `boundaries[].style` | Reference to one named palette |
@@ -140,8 +145,8 @@ its immediate members in two columns. Nested members use their own settings. `lo
 the group's current internal geometry authoritative until unlocked; changing a pattern alone never
 rearranges the saved geometry.
 
-Current bounds are 100 views, 200 native nodes, 100 annotations and 500 edges per view, and a
-10,000-unit canvas dimension. Supported native nodes are parts, packages and items; supported edges
+A model can define up to 100 views. Each view can contain up to 200 native nodes, 100 annotations
+and 500 edges. Canvas coordinates must be finite. Supported native nodes are parts, packages and items; supported edges
 are binary dependencies, connections and projected flows. Endpoints must match the source model.
 Port paths resolve to selected top-level usages; independent port symbols are not rendered here.
 Use-case/actor, action, sequence and verification notation remain outside this renderer's coverage.

@@ -28,6 +28,7 @@ type View struct {
 	Title        string           `json:"title"`
 	Owner        string           `json:"owner"`
 	Subject      string           `json:"subject"`
+	Origin       *[2]float64      `json:"origin,omitempty"`
 	Width        float64          `json:"width"`
 	Height       float64          `json:"height"`
 	Nodes        []Node           `json:"nodes"`
@@ -84,8 +85,8 @@ func Parse(data []byte) (*Config, error) {
 			return nil, fmt.Errorf("invalid or duplicate view ID %q", v.ID)
 		}
 		ids[v.ID] = true
-		if v.Title == "" || v.Subject == "" || !dimension(v.Width) || !dimension(v.Height) {
-			return nil, fmt.Errorf("view %s needs title, subject and bounded canvas", v.ID)
+		if v.Title == "" || v.Subject == "" || !v.validCanvas() {
+			return nil, fmt.Errorf("view %s needs title, subject and valid canvas geometry", v.ID)
 		}
 		if v.Owner != "." && (path.Clean(v.Owner) != v.Owner || strings.HasPrefix(v.Owner, "/") || strings.Contains(v.Owner, "\\") || v.Owner == ".." || strings.HasPrefix(v.Owner, "../")) {
 			return nil, fmt.Errorf("invalid view owner %q", v.Owner)
@@ -93,9 +94,23 @@ func Parse(data []byte) (*Config, error) {
 	}
 	return &c, nil
 }
-func dimension(x float64) bool { return x > 0 && x <= 10000 && !math.IsNaN(x) && !math.IsInf(x, 0) }
+func dimension(x float64) bool { return x > 0 && finite(x) }
+
+func (v View) origin() (float64, float64) {
+	if v.Origin == nil {
+		return 0, 0
+	}
+	return v.Origin[0], v.Origin[1]
+}
+
+func (v View) validCanvas() bool {
+	x, y := v.origin()
+	return dimension(v.Width) && dimension(v.Height) && finite(x) && finite(y) && finite(x+v.Width) && finite(y+v.Height)
+}
+
 func within(p [2]float64, v View) bool {
-	return p[0] >= 0 && p[1] >= 0 && p[0] <= v.Width && p[1] <= v.Height
+	x, y := v.origin()
+	return finite(p[0]) && finite(p[1]) && p[0] >= x && p[1] >= y && p[0] <= x+v.Width && p[1] <= y+v.Height
 }
 func onBoundary(p [2]float64, n Node) bool {
 	const epsilon = 0.01
@@ -114,6 +129,9 @@ func (c *Config) Find(id string) (View, error) {
 // Validate rejects invented/reversed relationships and unsupported selections. Parser
 // diagnostics elsewhere in the preserved document remain distinct from this scoped check.
 func (v View) Validate(m *sysml.Model) error {
+	if !v.validCanvas() {
+		return fmt.Errorf("invalid canvas geometry")
+	}
 	if v.Presentation {
 		return v.validatePresentation(m)
 	}

@@ -38,8 +38,22 @@ export function createWorkspace(name: string) {
   })
 }
 
-export function moveProject(projectId: string, workspaceId: string) {
-  return projectRequest<ProjectInfo>(`projects/${encodeURIComponent(projectId)}/workspace`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspaceId }),
+export function renameWorkspace(id: string, name: string) {
+  return projectRequest<WorkspaceInfo>(`workspaces/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
   })
+}
+
+export function removeWorkspace(id: string) {
+  return projectRequest<{ ok: boolean }>(`workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function updateProject(id: string, name: string, workspaceId: string) {
+  return projectRequest<ProjectInfo>(`projects/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, workspaceId }),
+  })
+}
+
+export function removeProject(id: string) {
+  return projectRequest<{ ok: boolean }>(`projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }

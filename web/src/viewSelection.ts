@@ -1,7 +1,7 @@
 import type { SysmlElement, SysmlModel } from './types'
 import type { SharedView } from './sharedViews.ts'
-import { boxesOf, lockedAncestor } from './sharedViews.ts'
-import { routeEdges } from './sharedRouting.ts'
+import { boxesOf, lockedAncestor, expandCanvas } from './sharedViews.ts'
+import { routeEdges } from './savedDiagramRouting.ts'
 import { canPlaceElement, type DropPosition } from './elementDrag.ts'
 
 export function viewReference(model: SysmlModel, element: SysmlElement) {
@@ -26,22 +26,20 @@ export function addViewElement(view: SharedView, model: SysmlModel, id: string, 
  const boxes = boxesOf(view).filter(box => !box.parent)
  const right = Math.max(0, ...boxes.map(box => box.x + box.width))
  const start = drop && Number.isFinite(drop.x) && Number.isFinite(drop.y) ?
-  { x: Math.max(8, Math.round(drop.x)), y: Math.max(8, Math.round(drop.y)) } :
+  { x: Math.round(drop.x), y: Math.round(drop.y) } :
   { x: right + 40, y: 80 }
- const candidates = [start, { x: right + 40, y: Math.min(start.y, view.height) }]
+ const candidates = [start, { x: right + 40, y: start.y }]
  for (const box of boxes) {
   candidates.push({ x: box.x + box.width + margin, y: start.y }, { x: start.x, y: box.y + box.height + margin })
  }
  const distance = ({ x, y }: DropPosition) => Math.abs(start.x - x) + Math.abs(start.y - y)
  const place = candidates.sort((a, b) => distance(a) - distance(b)).find(({ x, y }) =>
-  x + width + margin <= 10000 && y + height + margin <= 10000 &&
   boxes.every(box => x + width <= box.x || x >= box.x + box.width || y + height <= box.y || y >= box.y + box.height),
  )
  if (!place) throw new Error('No clear space for this element. Arrange the view before adding it.')
  const next = structuredClone(view)
  next.nodes.push({ element: key, ...place, width, height })
- next.width = Math.max(next.width, place.x + width + margin)
- next.height = Math.max(next.height, place.y + height + margin)
+ expandCanvas(next)
  routeEdges(next, view)
  return next
 }

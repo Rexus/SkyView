@@ -1,10 +1,10 @@
 import { layoutFlow } from './flowLayout.ts'
-import { boxesOf, boxKey, descendants, translate, lockedParent } from './sharedViews.ts'
+import { boxesOf, boxKey, descendants, translate, lockedParent, expandCanvas } from './sharedViews.ts'
 import type { Arrangement, Box, SharedView } from './sharedViews.ts'
-import { routeEdges } from './sharedRouting.ts'
+import { routeEdges } from './savedDiagramRouting.ts'
 
 /** Arrange from the inside out. A locked container is an opaque, movable box. */
-export function autoLayout(input: SharedView, only?: string): SharedView {
+export function autoLayout(input: SharedView, only?: string, labels?: ReadonlyMap<string, string>): SharedView {
  const view = structuredClone(input)
  view.presentation = true
  const all = boxesOf(view), map = new Map(all.map(b => [boxKey(b), b]))
@@ -55,7 +55,7 @@ export function autoLayout(input: SharedView, only?: string): SharedView {
     if ('element' in container) for (const label of container.labels ?? []) { label.x *= width / container.width; label.y = Math.min(label.y, height) }
     container.width = width; container.height = height
    }
-   else { view.width = Math.max(300, right); view.height = Math.max(200, bottom) }
+   else { delete view.origin; view.width = Math.max(300, right); view.height = Math.max(200, bottom) }
   }
   active.delete(parent)
  }
@@ -74,17 +74,32 @@ export function autoLayout(input: SharedView, only?: string): SharedView {
    parent = map.get(parent)?.parent ?? ''
   }
  } else arrange('')
- routeEdges(view, old, !only)
+ routeEdges(view, old, !only, labels)
  return view
 }
 
 export function moveBox(input: SharedView, key: string, dx: number, dy: number): SharedView {
  if (lockedParent(input, key)) throw new Error('Unlock the containing boundary before moving its contents.')
+ if (!Number.isFinite(dx) || !Number.isFinite(dy)) throw new Error('The drop position is invalid.')
+ dx = Math.round(dx); dy = Math.round(dy)
+ if (!dx && !dy) return input
  const view = structuredClone(input)
- translate(view, key, Math.round(dx), Math.round(dy))
- view.width = Math.max(view.width, ...boxesOf(view).map(b => b.x + b.width + 24))
- view.height = Math.max(view.height, ...boxesOf(view).map(b => b.y + b.height + 24))
+ const boxes = boxesOf(view)
+ const moved = boxes.find(box => boxKey(box) === key)
+ if (!moved) throw new Error('This box is no longer in the view.')
+ translate(view, key, dx, dy)
+ const parent = boxes.find(box => boxKey(box) === moved.parent)
+ if (parent && !fits(moved, parent)) throw new Error('The box must stay inside its containing group.')
+ for (const peer of boxes) {
+  if (peer === moved || peer.parent !== moved.parent) continue
+  if (moved.x < peer.x + peer.width && peer.x < moved.x + moved.width &&
+      moved.y < peer.y + peer.height && peer.y < moved.y + moved.height) {
+   throw new Error('There is already a box at that position.')
+  }
+ }
+ expandCanvas(view)
  routeEdges(view, input)
+ expandCanvas(view, 0)
  return view
 }
 

@@ -32,3 +32,10 @@
   stroke-width: 3px;
   stroke-linejoin: round;
 }
+
+.diagram-relationship .relationship-label-leader {
+  fill: none;
+  stroke: var(--relationship-stroke, #627581);
+  stroke-width: 1;
+  stroke-dasharray: 1 4;
+}

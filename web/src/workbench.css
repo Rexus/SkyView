@@ -19,9 +19,10 @@
 /* Shared workbench chrome */
 .topbar, .viewbar { background: var(--bg-elev); }
 .topbar { position: relative; z-index: 50; height: var(--topbar-h); gap: 10px; padding-inline: 12px; }
-.viewbar { position: relative; z-index: 30; min-height: 36px; gap: 0; padding: 0 9px; overflow: visible; }
+.viewbar { position: relative; z-index: 30; min-height: 36px; flex-wrap: wrap; gap: 0; padding: 0 7px; overflow: visible; }
 .viewbar .tab {
   height: 36px;
+  flex: 0 0 auto;
   padding-inline: 10px;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -32,15 +33,22 @@
   border-bottom-color: var(--accent);
   background: transparent;
 }
-.topbar .sidebar-toggle { flex: 0 0 auto; }
-.topbar .sidebar-toggle::after { left: 0; transform: none; }
+.viewbar .sidebar-toggle { flex: 0 0 auto; margin-right: 4px; }
+.viewbar .viewbar-actions {
+  flex: 0 0 auto;
+  gap: 3px;
+  margin-right: 4px;
+  padding: 0 4px;
+  border-inline: 1px solid var(--border);
+}
+.viewbar .tooltip::after { left: 0; transform: none; }
 .topbar .brand { min-width: 0; gap: 8px; }
 .brand-mark { width: 29px; height: 29px; border-radius: 5px; }
 .brand-mark svg { width: 17px; height: 17px; }
 .brand-name { font-size: 15px; }
 .brand-sub { font-size: 9px; letter-spacing: .055em; }
 .topbar-divider { margin: 0 2px; }
-.topbar-meta, .viewbar-actions { gap: 3px; }
+.topbar-meta { gap: 3px; }
 .topbar .icon-button, .viewbar .icon-button, .diagram-toolbar .icon-button,
 .sidebar-head .icon-button, .project-bar .icon-button, .project-tree-heading .icon-button, .canvas-tools .icon-button {
   width: 28px;
@@ -58,8 +66,8 @@
 .header-account { margin-left: 6px; padding-left: 9px; border-left: 1px solid var(--border); }
 .header-account svg { flex-shrink: 0; }
 .workspace-picker label { color: var(--text-muted); }
-.workspace-picker select { width: min(165px, 24vw); height: 29px; padding-block: 0; }
-.topbar-meta .tooltip::after, .viewbar-actions .tooltip::after, .canvas-tools .tooltip::after {
+.workspace-picker select { width: min(165px, 24vw); }
+.topbar-meta .tooltip::after, .canvas-tools .tooltip::after {
   left: auto;
   right: 0;
   transform: none;
@@ -137,21 +145,10 @@
 
 .project-bar { padding: 9px 10px 8px; border-bottom: 1px solid var(--border); }
 .pane-heading { display: block; margin: 0 0 5px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
-.project-picker-row { display: flex; align-items: center; gap: 4px; }
-.project-picker-row select { flex: 1; min-width: 0; height: 29px; padding-block: 0; font-size: 12px; }
-.project-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  margin-top: 5px;
-  border: 0;
-  background: transparent;
-  border-radius: 4px;
-  color: var(--accent);
-}
-.project-add:hover:not(:disabled) { background: var(--accent-soft); }
-.project-add:disabled { opacity: .5; }
+.catalog-controls { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.catalog-controls select { min-width: 0; height: 29px; padding-block: 0; font-size: 12px; }
+.catalog-controls .icon-button { flex: 0 0 auto; }
+.project-bar .catalog-controls select { flex: 1; }
 .project-origin { display: block; margin: 5px 0 0 5px; color: var(--text-muted); }
 .project-tree { padding: 8px 6px; }
 .project-tree-heading { display: flex; align-items: center; justify-content: space-between; min-height: 25px; padding-inline: 5px; }
@@ -276,7 +273,10 @@ details[open] > summary.explorer-row::before { transform: rotate(135deg); }
   background: var(--bg-panel);
 }
 .diagram-toolbar :is(.input-sm, .btn-sm) { min-height: 27px; height: 27px; }
-.diagram-toolbar .diagram-scope { width: clamp(120px, 18vw, 270px); }
+.model-diagram-toolbar .diagram-scope { flex: 1 1 0; min-width: 68px; max-width: 270px; }
+.model-diagram-toolbar .diagram-projection { flex: 0 0 124px; }
+.diagram-toolbar .select { padding-inline-end: 25px; text-overflow: ellipsis; }
+.diagram-toolbar .icon-button, .diagram-picker > svg { flex: none; }
 .diagram-tabs {
   display: flex;
   flex: 0 0 auto;
@@ -323,8 +323,15 @@ details[open] > summary.explorer-row::before { transform: rotate(135deg); }
 .diagram-tab-menu button { display: block; width: 100%; padding: 6px 8px; text-align: left; font-size: 12px; }
 .diagram-tab-menu button:disabled { opacity: .5; cursor: default; }
 .project-view-dirty { margin-inline-start: auto; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.diagram-picker { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.diagram-picker select { width: clamp(140px, 21vw, 320px); max-width: 100%; }
+.diagram-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 96px;
+  max-width: 320px;
+}
+.diagram-picker > select { flex: 1 1 0; width: 0; min-width: 0; }
 .shared-views { padding: 0; }
 .shared-create, .shared-render-status, .shared-error { margin: 0; padding: 6px 9px; }
 .shared-render-status { color: var(--text-muted); font-size: 12px; }
@@ -396,8 +403,7 @@ details[open] > summary.explorer-row::before { transform: rotate(135deg); }
 .split-panes .source-toolbar { padding: 5px 7px; gap: 4px; }
 .split-panes .source-toolbar .section-title, .split-panes .source-sync-status { display: none; }
 .split-panes .diag-panel { max-height: min(26%, 168px); }
-.split-panes .diagram-picker select { width: clamp(115px, 15vw, 240px); }
-.split-panes .diagram-toolbar .diagram-scope { width: clamp(110px, 13vw, 200px); }
+.split-panes .diagram-picker > svg { display: none; }
 
 .diagram-relationship[data-selected="true"] .relationship-line { stroke: var(--accent); stroke-width: 2.5; }
 .diagram-relationship[data-selected="true"] .relationship-arrow { fill: var(--accent); }

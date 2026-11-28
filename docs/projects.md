@@ -2,10 +2,9 @@
 
 [Back to SkyView](../README.md) · [Run locally](local-development.md) · [API](api.md)
 
-A workspace groups projects. Choose a **Workspace** in the header, then choose a **Project** in the
-left **Projects** panel. Open **Workspace and project actions** beside the project selector to
-create a workspace, export the current project or move it. The project map lists the project's model
-files. Open its **Model actions** menu to create or import a file, view its history, or delete it.
+Choose a **Workspace** in the header, then choose a **Project** in the left **Projects** panel.
+Use **+** beside either selector to add an item and **…** for its settings and other actions.
+The project map lists the selected project's files. Its **Model actions** menu handles model files.
 
 A project is a directory containing models, saved views and supporting files. Diagram, Grid,
 Requirements and Source work on the model open in that project.
@@ -18,9 +17,17 @@ Requirements and Source work on the model open in that project.
 ## Start a project
 
 Use **Add project** in the selected workspace. You can add several projects and switch among them
-from the project selector. To reassign an existing managed project, open it and choose **Move project**.
-It stays open under the destination workspace with the same model paths, history and direct links.
-Switching workspaces or projects prompts before discarding unsaved edits.
+from the project selector. Switching workspaces or projects prompts before discarding unsaved edits.
+
+Open **Project actions → Project settings** to rename a managed project or choose its workspace.
+It stays open with the same model paths, history and direct links. **Export project** downloads a ZIP.
+**Remove project** removes the entry from the catalog and retains its saved directory on the server.
+Save or discard drafts before removing the current project. The operator manages server folders and
+legacy workspace files.
+
+Open **Workspace actions → Workspace settings** to rename a workspace. Move or remove its projects
+before removing a named workspace. The default workspace remains available for server folders and
+legacy files.
 
 | Option | What happens |
 | --- | --- |
@@ -93,6 +100,8 @@ README.md
 Workspace names and IDs are stored in `.skyview/workspaces.json` at the server data root. Managed
 projects record their `workspaceId` in the on-disk manifest. A missing ID means **Default workspace**.
 ZIP exports omit the server workspace ID, and imports use the selected destination workspace.
+Removing a managed project marks its manifest with `removed: true`. To restore it, stop SkyView,
+remove that flag, and set `workspaceId` to an existing workspace or omit it for the default.
 
 A managed ID is its directory name. Display names may repeat. Imported origin metadata is descriptive
 and grants no access to a path, repository or account. A configured local folder needs no manifest.
@@ -119,16 +128,15 @@ The versioned example sources now live under [`examples/`](../examples/) and are
 - Nested model files are browsable independently. Cross-file SysML import resolution and unified
   project-wide semantic editing are not implemented. Keep interdependent definitions in a combined
   source bundle when the current parser needs them together.
-- This remains a single-trust workbench with no built-in login or per-user project permissions.
-  Hosted installations need their existing access protection; projects are not tenant security boundaries.
-- Source edits are supported in the app. Supporting files are preserved/exported, not a general file editor.
-  Remove or rename project directories while the server is stopped; there is no project deletion UI yet.
+- Local mode uses a single user's catalog. Hosted mode restricts each catalog to the signed-in account.
+  Projects within an account share that account's permissions.
+- The editor modifies model sources. ZIP exports preserve supporting files.
 
 ## Verification
 
 The native [project contract](../architecture/models/ProjectWorkspaces.sysml) defines PW-01–PW-05.
 Its complete source passed the published SysML v2 pilot 2026-04 checker with standard libraries on
-2026-11-27, with no reported model errors or warnings. The implementation map is in the
+2026-11-28, with no reported model errors or warnings. The implementation map is in the
 [architecture guide](../architecture/README.md).
 
 | Contract | Executable evidence |
@@ -137,7 +145,7 @@ Its complete source passed the published SysML v2 pilot 2026-04 checker with sta
 | PW-02: confined access, sibling isolation | `TestArchiveBoundaries`, `TestResolveRejectsSymlinks`, `TestLocalFolderAndStateConfinement`, `TestNestedHistoryIsolation`, `TestProjectLifecycle` |
 | PW-03: complete publication only | `TestRejectedImportsPublishNothing`, rejected upload and restart checks in `TestProjectLifecycle` |
 | PW-04: pinned snapshot without remote writes | `TestRepositorySnapshot`: both provider adapters, slash-containing refs, commit-pinned retrieval, host/redirect restrictions |
-| PW-05: workspace selection and project identity | `TestWorkspaceCatalogPreservesProjectIdentityAndPortability`, `web/tests/projects.test.mjs`, and browser checks for creation, grouping, reassignment and unsaved drafts |
+| PW-05: workspace selection and project identity | `TestWorkspaceCatalogPreservesProjectIdentityAndPortability`, `TestCatalogSettingsAndRemoval`, and `web/tests/projects.test.mjs` |
 | Example independence and browser lifecycle | `TestBundledExamplesAreIndependent`, `web/tests/projects.test.mjs`, source-editor remount regression |
 
 The built-in browser was used to open the bundled pendulum (194 elements, zero diagnostics, seven

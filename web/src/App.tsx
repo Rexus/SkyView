@@ -23,6 +23,8 @@ import {
   Loader2,
   Moon,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Redo2,
   Sun,
@@ -140,6 +142,7 @@ export default function App() {
   const [tab, setActiveTab] = useState<Tab>('diagram')
   const [sidebarTab, setSidebarTab] = useState<NavigatorPanel>('projects')
   const [sidebarVisible, setSidebarVisible] = useState(() => localStorage.getItem(sidebarStorageKey) !== 'false')
+  const sidebarLabel = sidebarVisible ? 'Hide sidebar' : 'Show sidebar'
   useEffect(() => {
     localStorage.setItem(sidebarStorageKey, String(sidebarVisible))
   }, [sidebarVisible])
@@ -735,7 +738,10 @@ export default function App() {
     [file, selectedId, pushToast, refreshFiles, recordUndo],
   )
 
+  const undoMove = showsDiagram(tab) ? customActions?.undoMove : undefined
   const undo = useCallback(async () => {
+    if (layoutSaving) return
+    if (undoMove) { await undoMove(); return }
     if (!file || sourceBusy()) return
     const snapshot = undoStack[undoStack.length - 1]
     if (!snapshot) {
@@ -759,7 +765,7 @@ export default function App() {
     } finally {
       setSaving(false)
     }
-  }, [file, selectedId, undoStack, pushToast, refreshFiles, sourceBusy])
+  }, [file, selectedId, undoStack, pushToast, refreshFiles, sourceBusy, layoutSaving, undoMove])
 
   const redo = useCallback(async () => {
     if (!file || sourceBusy()) return
@@ -1088,9 +1094,6 @@ export default function App() {
       }}
     >
       <Header
-        sidebarVisible={sidebarVisible}
-        sidebarShortcut={useMacShortcut ? 'Meta+B' : 'Control+B'}
-        onToggleSidebar={toggleSidebar}
         workspaceHost={setWorkspaceHost}
         account={about?.account}
         saving={saving || layoutSaving}
@@ -1143,8 +1146,32 @@ export default function App() {
         />
 
         <main className="main">
-          {file && (
-            <div className="viewbar">
+          <div className="viewbar">
+            <button id="sidebar-toggle" type="button" className="icon-button tooltip sidebar-toggle"
+              aria-label={sidebarLabel} aria-expanded={sidebarVisible} aria-controls="workbench-sidebar"
+              aria-keyshortcuts={useMacShortcut ? 'Meta+B' : 'Control+B'}
+              data-tip={sidebarLabel + (useMacShortcut ? ' (Cmd+B)' : ' (Ctrl+B)')} onClick={toggleSidebar}>
+              {sidebarVisible ? <PanelLeftClose size={16} aria-hidden="true" /> : <PanelLeftOpen size={16} aria-hidden="true" />}
+            </button>
+            {file && <>
+              <div className="viewbar-actions" role="group" aria-label="Edit history">
+                <button
+                  className="icon-button tooltip"
+                  data-tip="Undo" aria-label="Undo"
+                  onClick={() => void undo()}
+                  disabled={saving || layoutSaving || (!undoMove && (undoStack.length === 0 || sourceDirty))}
+                >
+                  <Undo2 size={15} />
+                </button>
+                <button
+                  className="icon-button tooltip"
+                  data-tip="Redo" aria-label="Redo"
+                  onClick={() => void redo()}
+                  disabled={redoStack.length === 0 || sourceDirty || saving}
+                >
+                  <Redo2 size={15} />
+                </button>
+              </div>
               <button className={cx('tab', tab === 'diagram' && 'active')} aria-pressed={tab === 'diagram'} onClick={() => setTab('diagram')}>
                 <Network size={14} /> Diagram
               </button>
@@ -1164,27 +1191,8 @@ export default function App() {
               <button className={cx('tab', tab === 'split' && 'active')} aria-pressed={tab === 'split'} onClick={() => setTab('split')}>
                 <Columns2 size={14} /> Split
               </button>
-              <div className="viewbar-spacer" />
-              <div className="viewbar-actions">
-                <button
-                  className="icon-button tooltip"
-                  data-tip="Undo" aria-label="Undo"
-                  onClick={() => void undo()}
-                  disabled={undoStack.length === 0 || sourceDirty || saving}
-                >
-                  <Undo2 size={15} />
-                </button>
-                <button
-                  className="icon-button tooltip"
-                  data-tip="Redo" aria-label="Redo"
-                  onClick={() => void redo()}
-                  disabled={redoStack.length === 0 || sourceDirty || saving}
-                >
-                  <Redo2 size={15} />
-                </button>
-              </div>
-            </div>
-          )}
+            </>}
+          </div>
 
           {loading && !file ? (
             <div className="loading-screen">

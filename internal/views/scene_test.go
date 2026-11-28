@@ -141,3 +141,49 @@ func TestSavedConnectionsMeetTheNativePort(t *testing.T) {
 		t.Fatal("browser and exported routes differ", err)
 	}
 }
+
+func TestSceneAndSVGAcceptSignedCanvasPastTenThousand(t *testing.T) {
+	cfg := presentationFixture()
+	v := &cfg.Views[0]
+	dx, dy := float64(-18000), float64(-15000)
+	v.Origin = &[2]float64{dx, dy}
+	v.Width += -dx
+	v.Height += -dy
+	for i := range v.Nodes {
+		v.Nodes[i].X += dx
+		v.Nodes[i].Y += dy
+	}
+	for i := range v.Boundaries {
+		v.Boundaries[i].X += dx
+		v.Boundaries[i].Y += dy
+	}
+	for i := range v.Edges {
+		e := &v.Edges[i]
+		e.Label[0] += dx
+		e.Label[1] += dy
+		for j := range e.Points {
+			e.Points[j][0] += dx
+			e.Points[j][1] += dy
+		}
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scene, err := BuildScene(presentationSource, reopened.Views[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(scene.SVG, `viewBox="-18000 -15000 18800 15500"`) {
+		t.Fatal("SVG bounds do not match the signed coordinate space")
+	}
+	for _, node := range scene.Nodes {
+		if node.X >= 0 || node.Y >= 0 {
+			t.Fatalf("expected signed positions, got %g, %g", node.X, node.Y)
+		}
+	}
+}

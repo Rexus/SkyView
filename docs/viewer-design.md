@@ -23,11 +23,18 @@ For SkyView, retain readable light/dark themes, a persistent project identity an
 Use model-kind labels, visible selection/focus, compact contextual controls and consistent role colors.
 Diagram opens first and remains the main work area. Choose the automatic layout or a saved view
 from one **Diagram view** picker. Both use the same glyphs, project language colours and compact
-viewport controls for selecting, panning, zooming and fitting. A thin titled frame follows the
+viewport controls for selecting, panning, zooming and fitting. Model diagrams arrange and fit
+when opened or when the scope or projection changes. Dragging stores manual positions for that
+scope and projection. Use **… → Restore saved positions** to revisit them. Saved views open
+with their saved geometry. **Auto layout** fits the arranged diagram to the available canvas.
+A thin titled frame follows the
 canvas and identifies the displayed scope. Presentation boundaries inside the frame group selected
 elements. The left navigator holds **Projects**, **Elements** and **Settings**, with properties
-below. Use the upper-left sidebar button or **Ctrl+B** (**Cmd+B** on macOS) to give the active
-view more room. SkyView remembers that choice in your browser. Expand a file in the project map
+below. Put actions beside the selector they affect. Use **+** to add an item and **…** for settings
+and other actions. Reuse the same button, menu, tooltip and dialog behavior wherever these controls
+appear. The sidebar toggle sits where the navigator meets the view toolbar. When the sidebar is
+hidden, use the same button at the left edge of the view. **Ctrl+B** (**Cmd+B** on macOS) also
+toggles it, and SkyView remembers your choice. **Undo** and **Redo** sit beside the toggle. Expand a file in the project map
 to find its packages and views. Choose **Grid**,
 **Requirements** or **Source** beside **Diagram** to work with the same model in the main area.
 **Split** puts source and the selected diagram side by side and links their selection for saved source.
@@ -65,8 +72,8 @@ that distinction. Sequence rendering remains planned.
 | --- | --- | --- |
 | Tree and nested presentation | Connected navigation and scoped views of the same model identities | Partial: tree, containment and custom diagram views exist |
 | Load one element, children or descendants; remove only from view | Explicit, portable selections; separate hide from semantic deletion | Model elements can add existing parts/items/packages to custom views; full contextual expansion remains planned |
-| Hierarchical/orthogonal, incremental layout | Keep Auto layout; preserve saved geometry and intentional grouping | Shared compact layout compares layered and folded arrangements and routes orthogonal connectors; advanced routing remains planned |
-| Ports, crossing cues and readable multi-ended relationships | Correct endpoints and relationship meaning before routing decoration | Selected ports/edges supported; comprehensive routing and n-ary coverage remain planned |
+| Hierarchical/orthogonal, incremental layout | Keep Auto layout; preserve saved geometry and intentional grouping | Shared layout compares layered and folded arrangements. Model diagrams reserve space for labels, and fit includes connectors and labels. |
+| Ports, crossing cues and readable multi-ended relationships | Correct endpoints and relationship meaning before routing decoration | Model diagrams separate independent attachments and fan out connections sharing a native port. A small gap marks a clear crossing without a junction. N-ary relationship diagrams remain planned. |
 | Sequence view with lifelines, events and messages | Derive diagrams from native occurrences and messages | Native behavior is partly projected; interactive sequence rendering remains planned |
 | Consistent keyword coloring | Shared notation/palette with deliberate project overrides | Project language colours feed both diagram modes and SVG export. Settings is the only colour editor. |
 

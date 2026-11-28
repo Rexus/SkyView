@@ -4,22 +4,41 @@ import { addViewConnection, addViewElement, viewKeyFor, viewReference } from '..
 import { canPlaceElement, type DropPosition } from '../elementDrag'
 import { API_BASE } from '../api'
 import type { FileResponse } from '../types'
-import { boxKey, boxesOf, lockedParent } from '../sharedViews'
+import { boxKey, boxesOf, descendants, lockedParent } from '../sharedViews'
 import type { SharedView, ViewConfig } from '../sharedViews'
 import { autoLayout, moveBox } from '../sharedLayout'
 import DiagramCanvas from './DiagramCanvas'
 import type { DiagramScene } from '../diagramScene'
-import { relativePosition } from '../diagramScene'
+import { relativePosition, sceneNodeId } from '../diagramScene'
 import { useSavedDiagram } from '../useSavedDiagram'
 import { connectModelPorts, type AddDiagramConnection } from '../diagramConnections'
 import SharedSettings from './SharedSettings'
 import ActionMenu from './ActionMenu'
-import type { Connection } from '@xyflow/react'
-import { Wand2 } from 'lucide-react'
+import type { Connection, Node } from '@xyflow/react'
+import { Loader2, Save, Settings2, Wand2 } from 'lucide-react'
 import { useModelViews, type ModelViews } from '../modelViews'
 import { discardLayouts, layoutDirty, type LayoutDraft } from '../diagramTabs'
 
-export interface CustomViewActions { addElement: (id: string) => void }
+export interface CustomViewActions { addElement: (id: string) => void; undoMove?: () => Promise<void> }
+type BoxMove = { key: string; dx: number; dy: number; published?: boolean }
+
+function replaceView(config: ViewConfig, view: SharedView): ViewConfig {
+ return { ...config, version: 2, views: config.views.some(item => item.id === view.id)
+  ? config.views.map(item => item.id === view.id ? view : item)
+  : [...config.views, view] }
+}
+
+function samePlacement(saved: SharedView, draft: SharedView, key: string) {
+ const keys = descendants(draft, key)
+ const published = boxesOf(saved).filter(box => keys.has(boxKey(box)))
+ const placements = new Map(boxesOf(draft).map(box => [boxKey(box), box]))
+ return published.length === keys.size && descendants(saved, key).size === keys.size &&
+  published.every(box => {
+   const match = placements.get(boxKey(box))!
+   return box.x === match.x && box.y === match.y && box.width === match.width &&
+    box.height === match.height && box.parent === match.parent
+  })
+}
 interface Props { split?: boolean; initial?: ModelViews; selected?: string; onSelected?: (view: string | null, title?: string, replace?: boolean) => void; onSaved?: (catalog: ModelViews) => void; navigation?: (views?: SharedView[]) => ReactNode; paletteRevision?: string; selectedId?: string | null; onAddElement?: (parent?: string) => void; onOpenAddConnection?: (parent?: string) => void; onAddConnection?: AddDiagramConnection; file: FileResponse; onDirtyChange?: (value: boolean) => void; settingsHost?: HTMLElement | null; onOpenSettings?: () => void; onActions?: (actions: CustomViewActions | null) => void; onSelectElement?: (id: string) => void; onOpenElementDiagram?: (id: string) => void; layoutDraft?: LayoutDraft; onLayoutChange?: (update: (config: ViewConfig) => ViewConfig) => void; onLayoutSaving?: (busy: boolean) => void }
 export default function CustomViews({ split, initial, selected: controlled, onSelected, onSaved, navigation, paletteRevision, selectedId, file, onDirtyChange, settingsHost, onOpenSettings, onActions, onSelectElement, onAddElement, onOpenAddConnection, onAddConnection, onOpenElementDiagram, layoutDraft, onLayoutChange, onLayoutSaving }: Props) {
  const [localConfig, setLocalConfig] = useState<ViewConfig | null>(initial?.config ?? null)
@@ -44,6 +63,9 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
  const [previewView, setPreviewView] = useState<SharedView | null>(null)
  const [rendered, setRendered] = useState<ViewConfig | null>(null)
  const [saving, setSaving] = useState(false)
+ const savingNow = useRef(false)
+ const [moveHistory, setMoveHistory] = useState<Record<string, BoxMove[]>>({})
+ const undoAction = useRef<() => Promise<void>>(async () => {})
  const [scope, setScope] = useState('')
  const upload = useRef<HTMLInputElement>(null)
  const fitAfterPreview = useRef<string | undefined>(undefined)
@@ -93,10 +115,14 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   }, 120)
   return () => { clearTimeout(timer); stop.abort() }
  }, [base, config, selected, file.name, file.revision, paletteRevision, view])
- const change = (next: SharedView) => { setConfig(c => c && ({ ...c, version: 2, views: c.views.map(v => v.id === next.id ? next : v) })); setError('') }
+ const change = (next: SharedView) => {
+  if (savingNow.current) return
+  setConfig(c => c && replaceView(c, next))
+  setError('')
+ }
  const openSettings = useCallback((key: string) => { setSettings(key); onOpenSettings?.() }, [onOpenSettings])
  const currentScene = previewView?.id === selected ? scene : null
- const graph = useSavedDiagram(currentScene, previewView ?? undefined, file.model, picked, config !== rendered, openSettings, selectedId, settings)
+ const graph = useSavedDiagram(currentScene, previewView ?? undefined, file.model, picked, saving || config !== rendered, openSettings, selectedId, settings)
  const subject = file.model.elements.find(e => e.shortName === view?.subject || e.qname === view?.subject)
  const pick = (key: string, multiple: boolean) => {
   setPicked(previous => multiple ? previous.includes(key) ? previous.filter(k => k !== key) : [...previous, key] : [key])
@@ -106,7 +132,7 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
  }
  const placeElement = (id: string, position?: DropPosition) => {
   const active = currentView.current
-  if (!active || connectionPending.current) return
+  if (!active || connectionPending.current || savingNow.current) return
   try {
    const next = addViewElement(active, file.model, id, position)
    const element = file.model.elements.find(e => e.id === id)!
@@ -115,13 +141,16 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
    onSelectElement?.(id)
   } catch (error) { setError(String(error)) }
  }
+ const latestMove = moveHistory[selected]?.at(-1)
+ const canUndoMove = !!latestMove && !saving && config === rendered
  useEffect(() => {
-  onActions?.(view ? { addElement: id => placeElement(id) } : null)
+  onActions?.(view ? { addElement: id => placeElement(id),
+   undoMove: latestMove ? () => undoAction.current() : undefined } : null)
   return () => onActions?.(null)
- }, [view, file.model, onActions, onSelectElement])
+ }, [view, file.model, onActions, onSelectElement, latestMove])
 
  const connect = async (params: Connection) => {
-  if (!view || !onAddConnection || !currentScene || connectionPending.current) return
+  if (!view || !onAddConnection || !currentScene || connectionPending.current || savingNow.current) return
   if (config !== rendered) {
    setError('Wait for the preview to update before connecting ports.')
    return
@@ -149,27 +178,111 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   } finally { connectionPending.current = false }
  }
  const arrange = (key?: string) => {
-  if (!view) return
+  if (!view || savingNow.current) return
   try {
-   const next = autoLayout(view, key)
-   fitAfterPreview.current = selected
-   change(next)
+   const labels = currentScene && new Map(currentScene.edges.map(edge => [edge.key, edge.label]))
+   const next = autoLayout(view, key, labels ?? undefined)
+   if (JSON.stringify(next) === JSON.stringify(view) && config === rendered) {
+    setFitRevision(revision => revision + 1)
+   } else {
+    fitAfterPreview.current = selected
+    change(next)
+   }
   } catch (error) { setError(String(error)) }
  }
+ const writeViews = async (next: ViewConfig): Promise<ModelViews> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'If-Match': file.revision }
+  if (etag) headers['If-View-Match'] = etag
+  else headers['If-None-Match'] = '*'
+  const response = await fetch(base, { method: 'PUT', headers, body: JSON.stringify(next, null, 2) + '\n' })
+  if (!response.ok) throw new Error((await response.json()).error)
+  return { config: next, etag: response.headers.get('ETag') ?? '' }
+ }
+ const acceptSave = (catalog: ModelViews) => {
+  setLocalSaved(catalog.config); setLocalEtag(catalog.etag); onSaved?.(catalog)
+ }
+ const markSaving = (pending: boolean) => {
+  savingNow.current = pending
+  setSaving(pending)
+  onLayoutSaving?.(pending)
+ }
  const save = async () => {
-  if (!config || config !== rendered) return
-  setSaving(true)
-  onLayoutSaving?.(true)
+  if (!config || config !== rendered || savingNow.current) return
+  markSaving(true)
+  try { acceptSave(await writeViews(config)); setError('') }
+  catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+  finally { markSaving(false) }
+ }
+ const move = async ({ key, dx, dy }: BoxMove, undo = false) => {
+  if (!view || !config || config !== rendered || savingNow.current || connectionPending.current) return false
   try {
-   const response = await fetch(base, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'If-Match': file.revision, ...(etag ? { 'If-View-Match': etag } : {}) }, body: JSON.stringify(config, null, 2) + '\n' })
-   if (!response.ok) throw new Error((await response.json()).error)
-   const revision = response.headers.get('ETag') ?? ''
-   setLocalSaved(config); setLocalEtag(revision); onSaved?.({ config, etag: revision })
-  } catch (e) { setError(String(e)) } finally { setSaving(false); onLayoutSaving?.(false) }
+   const next = moveBox(view, key, dx, dy)
+   if (next === view) return false
+   // A placement can be published independently of other view drafts when its
+   // box already has the same geometry in the saved view.
+   const published = saved?.views.find(item => item.id === view.id)
+   let nextSaved: ViewConfig | undefined
+   if (saved && (!published || samePlacement(published, view, key))) {
+    try {
+     nextSaved = replaceView(saved, !published || published === view ? next : moveBox(published, key, dx, dy))
+    } catch {
+     // The drop can rely on other draft changes, such as a peer's position.
+     // Keep that move in the draft for an explicit save of the complete view.
+    }
+   }
+   if (nextSaved) {
+    markSaving(true)
+    try {
+     const catalog = await writeViews(nextSaved)
+     if (dirty || !onLayoutChange) setConfig(current => current && replaceView(current, next))
+     acceptSave(catalog)
+    } finally { markSaving(false) }
+   } else {
+    change(next)
+   }
+   setError('')
+   setMoveHistory(history => ({ ...history, [selected]: undo
+    ? (history[selected] ?? []).slice(0, -1)
+    : [...(history[selected] ?? []).slice(-39), { key, dx, dy, published: !!nextSaved }] }))
+   return true
+  } catch (e) {
+   setError(e instanceof Error ? e.message : String(e))
+   return false
+  }
+ }
+ undoAction.current = async () => {
+  if (!latestMove) return
+  await move({ key: latestMove.key, dx: -latestMove.dx, dy: -latestMove.dy }, true)
+ }
+ const finishDrag = async (node: Node, dragged: Node[]) => {
+  if (!currentScene) return
+  const original = currentScene.nodes.find(item => item.key === node.data.viewKey)
+  if (!original) return
+  const position = relativePosition(original, currentScene)
+  const reset = (nodes: Node[]) => graph.onNodesChange(nodes.flatMap(draggedNode => {
+   const before = currentScene.nodes.find(item => item.key === draggedNode.data.viewKey)
+   return before ? [{ id: sceneNodeId(before), type: 'position', position: relativePosition(before, currentScene), dragging: false }] : []
+  }))
+  reset(dragged.filter(item => item.id !== node.id))
+  const moved = await move({ key: original.key, dx: Math.round(node.position.x - position.x), dy: Math.round(node.position.y - position.y) })
+  if (!moved) reset([node])
+ }
+ const revert = () => {
+  if (!saved || savingNow.current) return
+  setMoveHistory(history => ({ ...history, [selected]: (history[selected] ?? []).filter(move => move.published) }))
+  if (onLayoutChange) {
+   setConfig(current => current && discardLayouts(current, saved, new Set([selected])))
+   if (!saved.views.some(item => item.id === selected)) setSelected(null, undefined, true)
+  } else {
+   setConfig(saved)
+   setSelected(saved.views.some(item => item.id === selected) ? selected : saved.views[0]?.id ?? '')
+  }
+  setPicked([])
+  setSettings(null)
  }
  const download = (text: string, name: string, type: string) => { const url = URL.createObjectURL(new Blob([text], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
  const boundary = () => {
-  if (!view || !picked.length) return
+  if (!view || !picked.length || savingNow.current) return
   const next = structuredClone(view), members = boxesOf(next).filter(b => picked.includes(boxKey(b)))
   const parent = members[0]?.parent
   if (members.some(b => b.parent !== parent || lockedParent(next, boxKey(b)))) { setError('Choose elements in the same unlocked boundary.'); return }
@@ -206,32 +319,25 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
  return <section className="shared-views">
   <div className="view-toolbar diagram-toolbar">
    {navigation?.(config?.views)}
-   <span className="grow" />
    {view && <>
-    <button className="btn btn-sm" onClick={() => arrange()}><Wand2 size={14} /> Auto layout</button>
-    <button className="btn btn-sm" onClick={() => openSettings('')}>View settings</button>
-    {dirty && <>
-     <button className="btn btn-sm btn-primary" disabled={config !== rendered || saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save views'}</button>
-     {(!onLayoutChange || layoutDirty(layoutDraft, selected)) && <button className="btn btn-sm" disabled={saving} onClick={() => {
-      if (!saved) return
-      if (onLayoutChange) {
-       setConfig(current => current && discardLayouts(current, saved, new Set([selected])))
-       if (!saved.views.some(item => item.id === selected)) setSelected(null, undefined, true)
-      } else {
-       setConfig(saved)
-       setSelected(saved.views.some(item => item.id === selected) ? selected : saved.views[0]?.id ?? '')
-      }
-      setPicked([]); setSettings(null)
-     }}>Revert</button>}
-    </>}
+    <button type="button" className="icon-button tooltip" aria-label="Auto layout" data-tip="Auto layout"
+     onClick={() => arrange()}><Wand2 size={15} /></button>
+    <button type="button" className="icon-button tooltip" aria-label="View settings" data-tip="View settings"
+     onClick={() => openSettings('')}><Settings2 size={15} /></button>
+    {(dirty || saving) && <button type="button" className="icon-button tooltip active" aria-label="Save views"
+     data-tip={saving ? 'Saving…' : 'Save views'} aria-busy={saving} disabled={config !== rendered || saving}
+     onClick={() => void save()}>{saving ? <Loader2 className="spin" size={15} /> : <Save size={15} />}</button>}
    </>}
    <ActionMenu label="Diagram actions" iconOnly>
     {view && onAddElement && <button onClick={() => onAddElement(subject?.id)}>Add part</button>}
     {view && onOpenAddConnection && <button onClick={() => onOpenAddConnection(subject?.id)}>Add connection</button>}
-    {view && <button disabled={!picked.length} onClick={boundary}>Group selected elements</button>}
+    {view && <button disabled={!picked.length || saving} onClick={boundary}>Group selected elements</button>}
+    {view && <button disabled={!canUndoMove} onClick={() => void undoAction.current()}>Undo last move</button>}
     {view && <button disabled={!svg || config !== rendered} onClick={() => download(svg, selected + '.svg', 'image/svg+xml')}>Download SVG</button>}
     {view && <button onClick={() => download(JSON.stringify(config, null, 2) + '\n', file.name.replace(/\.sysml$/, '.views.json'), 'application/json')}>Download view definitions</button>}
-    <button onClick={() => upload.current?.click()}>Import view file</button>
+    <button disabled={saving} onClick={() => upload.current?.click()}>Import view file</button>
+    {view && dirty && (!onLayoutChange || layoutDirty(layoutDraft, selected)) &&
+     <button disabled={saving} onClick={revert}>Discard draft changes</button>}
    </ActionMenu>
    <input ref={upload} hidden type="file" accept=".json" onChange={async e => { const f = e.target.files?.[0]; if (!f) return; try { const c = JSON.parse(await f.text()) as ViewConfig; if (!Array.isArray(c.views) || !c.views.length) throw new Error('View file must contain selected views.'); setConfig(c); setSelected(c.views[0].id, c.views[0].title); setPicked([]); setSettings(null) } catch (err) { setError(String(err)) }; e.target.value = '' }} />
   </div>
@@ -253,12 +359,7 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
      onOpenElementDiagram?.(node.id)
     }}
     onEdgeClick={(_, edge) => onSelectElement?.(edge.id)}
-    onNodeDragStop={(_, node) => {
-     const original = scene.nodes.find(n => n.key === node.data.viewKey)
-     if (!original) return
-     const position = relativePosition(original, scene)
-     try { change(moveBox(view, original.key, node.position.x - position.x, node.position.y - position.y)) } catch (e) { setError(String(e)) }
-    }}
+    onNodeDragStop={(_, node, dragged) => void finishDrag(node, dragged)}
     onConnect={params => void connect(params)}
    />}
    {settingsPanel && (settingsHost ? createPortal(settingsPanel, settingsHost) : settingsPanel)}

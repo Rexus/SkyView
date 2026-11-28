@@ -2,10 +2,19 @@
 
 [Project overview](README.md) · [Development setup](README.md#development) · [Deployment options](deployment/README.md)
 
-Make changes on a branch and open a pull request against `main`. GitHub requires a pull request to
-update `main` and blocks force pushes and deletion. Read **Check and build** before merging.
-Explain behavior changes and include the checks and evidence that apply. Keep downloaded standards
-and generated local checker artifacts outside Git.
+## Branch and pull request workflow
+
+Start from the current upstream `main` and make changes on a branch.
+
+- Repository collaborators with write access can create and push their branch in `Rexus/SkyView`.
+- Other contributors should fork `Rexus/SkyView` and push their branch to their fork.
+
+Open a pull request targeting `Rexus/SkyView:main`. Explain behavior changes and include the checks
+and evidence that apply. Wait for **Check and build** to pass before merging. GitHub requires a pull
+request to update `main` and blocks force pushes and deletion on that branch.
+A maintainer must approve the workflow run on a fork pull request from a first-time contributor.
+
+Keep downloaded standards and generated local checker artifacts outside Git.
 
 ## Refresh the README screenshot
 

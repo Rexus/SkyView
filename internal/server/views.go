@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Rexus/SkyView/internal/projects"
+	"github.com/Rexus/SkyView/internal/sysml"
 	"github.com/Rexus/SkyView/internal/views"
 )
 
@@ -62,6 +63,12 @@ func (s *Server) handlePutViews(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "model changed; read it again before publishing views", nil)
 		return
 	}
+	if r.Header.Get("If-None-Match") == "*" {
+		if _, readErr := os.Stat(p); !os.IsNotExist(readErr) {
+			writeError(w, 409, "view changed; reload before saving", nil)
+			return
+		}
+	}
 	if expected := r.Header.Get("If-View-Match"); expected != "" {
 		old, readErr := os.ReadFile(p)
 		if readErr != nil || expected != revisionOf(string(old)) {
@@ -69,8 +76,9 @@ func (s *Server) handlePutViews(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	model := sysml.Parse(source)
 	for _, v := range c.Views {
-		if _, err = views.Render(source, v); err != nil {
+		if err = v.Validate(model); err != nil {
 			writeError(w, 422, err.Error(), nil)
 			return
 		}

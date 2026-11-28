@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/Rexus/SkyView/internal/projects"
@@ -42,10 +43,29 @@ func (s *Server) listWorkspaces() ([]workspaceInfo, error) {
 	if err := json.Unmarshal(data, &saved); err != nil {
 		return nil, fmt.Errorf("invalid workspace catalog: %w", err)
 	}
-	return append(list, saved...), nil
+	for _, workspace := range saved {
+		if workspace.ID == defaultWorkspace {
+			list[0] = workspace
+		} else {
+			list = append(list, workspace)
+		}
+	}
+	return list, nil
 }
 
-func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
+func (s *Server) saveWorkspaces(list []workspaceInfo) error {
+	path, err := projects.Resolve(s.workspace, workspaceCatalogPath)
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(path, append(data, '\n'))
+}
+
+func (s *Server) handleWorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Name string `json:"name"`
 	}
@@ -65,30 +85,73 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error(), nil)
 		return
 	}
-	if len(list) >= 200 {
-		writeError(w, 400, "workspace limit reached", nil)
+	id := r.PathValue("workspace")
+	index := slices.IndexFunc(list, func(entry workspaceInfo) bool { return entry.ID == id })
+	status := http.StatusOK
+	if r.Method == http.MethodPost {
+		if len(list) >= 200 {
+			writeError(w, 400, "workspace limit reached", nil)
+			return
+		}
+		id = "workspace-" + randomSuffix(8)
+		status = http.StatusCreated
+	} else if index < 0 {
+		writeError(w, 404, "workspace not found", nil)
 		return
 	}
 	for _, entry := range list {
-		if strings.EqualFold(name, entry.Name) {
+		if entry.ID != id && strings.EqualFold(name, entry.Name) {
 			writeError(w, 409, "a workspace already has that name", nil)
 			return
 		}
 	}
-	workspace := workspaceInfo{ID: "workspace-" + randomSuffix(8), Name: name}
-	path, err := projects.Resolve(s.workspace, workspaceCatalogPath)
-	if err == nil {
-		var data []byte
-		data, err = json.MarshalIndent(append(list[1:], workspace), "", "  ")
-		if err == nil {
-			err = atomicWrite(path, append(data, '\n'))
-		}
+	workspace := workspaceInfo{ID: id, Name: name}
+	if status == http.StatusCreated {
+		list = append(list, workspace)
+	} else {
+		list[index] = workspace
 	}
+	if err := s.saveWorkspaces(list); err != nil {
+		writeError(w, 500, err.Error(), nil)
+		return
+	}
+	writeJSON(w, status, workspace)
+}
+
+func (s *Server) handleRemoveWorkspace(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("workspace")
+	if id == defaultWorkspace {
+		writeError(w, 400, "the default workspace is required for server folders and workspace files", nil)
+		return
+	}
+	s.catalogMu.Lock()
+	defer s.catalogMu.Unlock()
+	list, err := s.listWorkspaces()
 	if err != nil {
 		writeError(w, 500, err.Error(), nil)
 		return
 	}
-	writeJSON(w, 201, workspace)
+	index := slices.IndexFunc(list, func(entry workspaceInfo) bool { return entry.ID == id })
+	if index < 0 {
+		writeError(w, 404, "workspace not found", nil)
+		return
+	}
+	managed, err := projects.List(s.projectRoot())
+	if err != nil {
+		writeError(w, 500, err.Error(), nil)
+		return
+	}
+	for _, project := range managed {
+		if project.WorkspaceID == id {
+			writeError(w, 409, "move or remove the workspace's projects before removing the workspace", nil)
+			return
+		}
+	}
+	if err := s.saveWorkspaces(slices.Delete(list, index, index+1)); err != nil {
+		writeError(w, 500, err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 // The caller holds catalogMu. The zero value is used by existing clients.
@@ -108,43 +171,4 @@ func (s *Server) checkWorkspace(w http.ResponseWriter, id string) bool {
 	}
 	writeError(w, 404, "workspace not found", nil)
 	return false
-}
-
-func (s *Server) handleMoveProject(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		WorkspaceID string `json:"workspaceId"`
-	}
-	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, 400, err.Error(), nil)
-		return
-	}
-	id := r.PathValue("project")
-	s.catalogMu.Lock()
-	defer s.catalogMu.Unlock()
-	if _, local := s.localProjects[id]; local || id == "workspace" {
-		writeError(w, 400, "only managed projects can move between workspaces", nil)
-		return
-	}
-	if !s.checkWorkspace(w, request.WorkspaceID) {
-		return
-	}
-	info, err := projects.Read(s.projectRoot(), id)
-	if err != nil {
-		writeError(w, 404, "project not found", nil)
-		return
-	}
-	path, err := projects.Resolve(s.projectRoot(), id+"/"+projects.ManifestName)
-	if err == nil {
-		info.WorkspaceID = request.WorkspaceID
-		var data []byte
-		data, err = json.MarshalIndent(info.Manifest, "", "  ")
-		if err == nil {
-			err = atomicWrite(path, append(data, '\n'))
-		}
-	}
-	if err != nil {
-		writeError(w, 500, err.Error(), nil)
-		return
-	}
-	writeJSON(w, 200, info)
 }

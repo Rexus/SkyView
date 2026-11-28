@@ -16,7 +16,8 @@ SkyView's design, behavior and appearance. Builds use published standards by def
 
 [![SkyView in light mode displaying the inspection drone's connected subsystems](docs/images/skyview-drone.jpg)](docs/images/skyview-drone.jpg)
 
-_Captured 28 November 2026 · SkyView v0.2.0 development build · revision `8126f95ea2b7`._
+_Captured 28 November 2026 · SkyView v0.2.0 development build · v0.3 workbench changes
+on base revision `f56ac483f89d`._
 
 Explore the [inspection drone example](examples/inspection-drone/): connected subsystems, four requirements,
 mission behavior and planned verification checks. The native-valid model loads without diagnostics.

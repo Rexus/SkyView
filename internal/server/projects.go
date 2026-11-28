@@ -73,7 +73,11 @@ func (s *Server) project(id string) (*Server, projects.Info, error) {
 }
 func (s *Server) registerProjectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects", s.handleProjects)
-	mux.HandleFunc("POST /api/workspaces", s.handleCreateWorkspace)
+	mux.HandleFunc("POST /api/workspaces", s.handleWorkspaceSettings)
+	mux.HandleFunc("PATCH /api/workspaces/{workspace}", s.handleWorkspaceSettings)
+	mux.HandleFunc("DELETE /api/workspaces/{workspace}", s.handleRemoveWorkspace)
+	mux.HandleFunc("PATCH /api/projects/{project}", s.handleProjectSettings)
+	mux.HandleFunc("DELETE /api/projects/{project}", s.handleRemoveProject)
 	mux.HandleFunc("PATCH /api/projects/{project}/workspace", s.handleMoveProject)
 	mux.HandleFunc("POST /api/projects", s.handleCreateProject)
 	mux.HandleFunc("POST /api/projects/upload", s.handleUploadProject)

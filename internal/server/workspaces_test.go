@@ -85,3 +85,71 @@ func TestWorkspaceCatalogPreservesProjectIdentityAndPortability(t *testing.T) {
 		t.Fatalf("import inherited workspace assignment: %+v", copy)
 	}
 }
+
+func TestCatalogSettingsAndRemoval(t *testing.T) {
+	root := t.TempDir()
+	app := New(root)
+	if err := app.ConfigureProject("checkout", t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	api := app.Handler()
+	create := func(path, name, workspaceID string, out any) {
+		t.Helper()
+		body := map[string]string{"name": name}
+		if workspaceID != "" {
+			body["workspaceId"] = workspaceID
+		}
+		response := projectCall(t, api, "POST", path, body, 201)
+		if err := json.Unmarshal(response.Body.Bytes(), out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var design workspaceInfo
+	create("/api/workspaces", "Design", "", &design)
+	var project projects.Info
+	create("/api/projects", "Cart", design.ID, &project)
+	workspaceRoute := "/api/workspaces/" + design.ID
+	projectRoute := "/api/projects/" + project.ID
+	sourcePath := filepath.Join(root, "projects", project.ID, "System.sysml")
+	before, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	projectCall(t, api, "PATCH", "/api/workspaces/default", map[string]string{"name": "Home"}, 200)
+	projectCall(t, api, "PATCH", workspaceRoute, map[string]string{"name": "home"}, 409)
+	projectCall(t, api, "PATCH", workspaceRoute, map[string]string{"name": "Lab"}, 200)
+	projectCall(t, api, "DELETE", "/api/workspaces/default", nil, 400)
+	projectCall(t, api, "DELETE", workspaceRoute, nil, 409)
+	projectCall(t, api, "DELETE", "/api/projects/local-checkout", nil, 400)
+	projectCall(t, api, "DELETE", "/api/projects/workspace", nil, 400)
+	projectCall(t, api, "PATCH", projectRoute, map[string]string{"name": "Wrong", "workspaceId": "missing"}, 404)
+	response := projectCall(t, api, "PATCH", projectRoute, map[string]string{"name": " Cart model "}, 200)
+	var updated projects.Info
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil || updated.ID != project.ID ||
+		updated.WorkspaceID != design.ID || updated.Name != "Cart model" || updated.Origin != project.Origin {
+		t.Fatalf("settings changed project identity or membership: %+v, %v", updated, err)
+	}
+	projectCall(t, api, "GET", projectRoute+"/files/System.sysml", nil, 200)
+	projectCall(t, api, "DELETE", projectRoute, nil, 200)
+	projectCall(t, api, "GET", projectRoute+"/files/System.sysml", nil, 404)
+	projectCall(t, api, "GET", projectRoute+"/export", nil, 404)
+	projectCall(t, api, "DELETE", workspaceRoute, nil, 200)
+	projectCall(t, api, "POST", "/api/projects", map[string]string{"name": "Orphan", "workspaceId": design.ID}, 404)
+
+	api = New(root).Handler()
+	response = projectCall(t, api, "GET", "/api/projects", nil, 200)
+	var catalog struct {
+		Workspaces []workspaceInfo `json:"workspaces"`
+		Projects   []projects.Info `json:"projects"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &catalog); err != nil || len(catalog.Projects) != 1 ||
+		catalog.Projects[0].ID != "workspace" || len(catalog.Workspaces) != 1 ||
+		catalog.Workspaces[0] != (workspaceInfo{ID: defaultWorkspace, Name: "Home"}) {
+		t.Fatalf("removal or default workspace name did not persist: %+v, %v", catalog, err)
+	}
+	after, err := os.ReadFile(sourcePath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("settings or removal changed saved model bytes: %v", err)
+	}
+}

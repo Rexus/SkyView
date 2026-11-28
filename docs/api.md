@@ -51,6 +51,10 @@ All file routes above and shared-view routes below also exist under
 | --- | --- | --- |
 | GET | `/api/projects` | `{workspaces: [{id, name}], projects: [{id, version, name, origin, workspaceId?}]}` |
 | POST | `/api/workspaces` | JSON `{name}` creates a named workspace |
+| PATCH | `/api/workspaces/{workspace}` | JSON `{name}` renames the workspace and preserves its ID |
+| DELETE | `/api/workspaces/{workspace}` | Removes an empty named workspace. A populated workspace returns `409` |
+| PATCH | `/api/projects/{project}` | JSON `{name?, workspaceId?}` changes a managed project's settings and preserves its ID |
+| DELETE | `/api/projects/{project}` | Removes a managed project from the catalog and retains its files |
 | PATCH | `/api/projects/{project}/workspace` | JSON `{workspaceId}` reassigns a managed project and returns its metadata |
 | POST | `/api/projects` | JSON `{name, example?, workspaceId?}`; creates an independent project |
 | POST | `/api/projects/upload` | Multipart `file` (ZIP), `name`, `directory`, optional `workspaceId`; name optional when ZIP has a manifest |

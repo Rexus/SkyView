@@ -4,6 +4,7 @@ import { autoLayout, moveBox } from '../src/sharedLayout.ts'
 import { layoutFlow } from '../src/flowLayout.ts'
 import { routeOrthogonal, segments } from '../src/sharedRouting.ts'
 import { routeModelEdges } from '../src/modelDiagramRouting.ts'
+import { placeRouteLabels } from '../src/relationshipLabels.ts'
 import { boxesOf, boxKey, lockedParent } from '../src/sharedViews.ts'
 
 function fixture() {
@@ -147,4 +148,65 @@ test('automatic interconnections keep named ports and route around intervening b
  assert.deepEqual(edge.data.points[0], [100, 45])
  assert.deepEqual(edge.data.points.at(-1), [360, 45])
  assert.ok(edge.data.points.some(([, y]) => y <= 0 || y >= 100))
+})
+
+test('label placement clears cards, tracks and other labels and fits a dense fallback', () => {
+ const paths = [
+  { points: [[30, 80], [270, 80]], text: 'Runs on local infrastructure' },
+  { points: [[40, 110], [270, 110]], text: 'Realized over network' },
+ ]
+ const boxes = [{ x: 80, y: 36, width: 150, height: 38 }]
+ const [first, second] = placeRouteLabels(paths, boxes)
+ assert.ok(first.bounds.y > 80)
+ assert.ok(second.bounds.y > first.bounds.y + first.bounds.height || second.bounds.y + second.bounds.height <= first.bounds.y)
+ const [fallback] = placeRouteLabels(paths.slice(0, 1), [{ x: 0, y: 0, width: 360, height: 250 }])
+ assert.ok(fallback.bounds.y > 250)
+ assert.deepEqual(fallback.leader, [150, 80])
+})
+
+test('independent relationships get separate card attachments, while a shared port fans out', () => {
+ const box = (x, y, ports = []) => ({ x, y, width: 120, height: 100, glyph: { ports } })
+ const boxes = new Map([
+  ['a', box(0, 120, [{ id: 'port', y: 50 }])],
+  ['b', box(380, 80)],
+  ['c', box(380, 200)],
+ ])
+ const make = (target, sourceHandle) => ({ id: target, source: 'a', target, sourceHandle, data: { kind: 'dependency' } })
+ const branches = routeModelEdges([make('b'), make('c')], boxes)
+ assert.ok(branches[0].data.points[0][1] < branches[1].data.points[0][1])
+ assert.ok(branches.every(edge => Math.abs(edge.data.points[0][1] - 170) >= 8))
+ const fromPort = routeModelEdges([make('b', 'port-out'), make('c', 'port-out')], boxes)
+ for (const edge of fromPort) {
+  assert.deepEqual(edge.data.points[0], [120, 170])
+  const [, [x, y], [u, v]] = edge.data.points
+  assert.ok(Math.abs(x - u) > 0)
+  assert.equal(Math.abs(x - u), Math.abs(y - v))
+ }
+})
+
+test('a remaining perpendicular crossing is marked on just one connector', () => {
+ const box = (x, y) => ({ x, y, width: 80, height: 80, glyph: { ports: [] } })
+ const boxes = new Map([['left', box(0, 300)], ['right', box(600, 300)], ['top', box(300, 0)], ['bottom', box(300, 600)]])
+ const [horizontal, vertical] = routeModelEdges([
+  { id: 'horizontal', source: 'left', target: 'right', data: { kind: 'dependency' } },
+  { id: 'vertical', source: 'top', target: 'bottom', data: { kind: 'flow' } },
+ ], boxes)
+ assert.deepEqual(horizontal.data.gaps, [[340, 340]])
+ assert.deepEqual(vertical.data.gaps, [])
+})
+
+test('moving a box extends the canvas in every direction without shifting other boxes', () => {
+ const input = fixture()
+ const left = moveBox(input, 'tier', -15000, -12000)
+ assert.deepEqual(left.nodes[2], input.nodes[2])
+ assert.deepEqual(left.edges[0].points, input.edges[0].points.map(([x, y]) => [x - 15000, y - 12000]))
+ assert.ok(left.origin[0] < -15000 && left.origin[1] < -12000)
+ const right = moveBox(left, 'c', 17000, 12500)
+ assert.deepEqual(right.boundaries, left.boundaries)
+ assert.ok(right.origin[0] + right.width > 17750 && right.origin[1] + right.height > 12610)
+ const undone = moveBox(right, 'c', -17000, -12500)
+ assert.deepEqual(undone.nodes, left.nodes)
+ assert.deepEqual(undone.edges[0], left.edges[0])
+ assert.throws(() => moveBox(input, 'c', -700, -30), /already a box/)
+ assert.throws(() => moveBox(input, 'a', -1000, -1000), /containing group/)
 })

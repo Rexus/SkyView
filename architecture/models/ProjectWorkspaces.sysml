@@ -20,12 +20,14 @@ package ProjectWorkspaces {
         attribute modelsAndViewsExported : Boolean;
     }
     part def Browser {
-        doc /* Choose a workspace in the header and a project in the Projects panel. Upload ZIP, request a Git snapshot, copy an example, export for review.
+        doc /* Choose a workspace in the header and a project in the Projects panel. Both selectors use the same add and management controls.
+            Upload ZIP, request a Git snapshot, copy an example, export for review.
             Project switching unloads drafts, diagnostics and undo state after an unsaved-edit check. */
     }
     part def ProjectCatalog {
         doc /* Catalog managed project directories and explicitly configured server-local directories.
-            Legacy root models remain accessible in the default workspace. No arbitrary server paths from browser requests. */
+            Legacy root models remain accessible in the default workspace. Renaming retains catalog IDs. Removing a managed project retains its saved directory.
+            Only empty named workspaces can be removed. No arbitrary server paths from browser requests. */
     }
     part def ProjectStore {
         doc /* Native files remain authoritative; preserve nested relative paths and binary assets.
@@ -96,8 +98,9 @@ package ProjectWorkspaces {
     package Journeys {
         use case organizeProjects {
             subject system : WorkspaceService = service;
-            objective { doc /* Create a workspace, add multiple projects, move a managed project,
-                and switch workspaces to see their distinct project lists. */ }
+            objective { doc /* Create and rename a workspace, add multiple projects, rename or move a managed project,
+                and switch workspaces to see their distinct lists. Remove a managed project while retaining its files.
+                Remove a named workspace once empty. */ }
         }
         verification workspaceCatalog {
             subject workspace : Workspace;

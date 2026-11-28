@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ const ManifestName = "skyview.project.json"
 const MaxFile = 16 << 20
 const MaxArchive = 64 << 20
 const MaxEntries = 4000
+
+var errRemoved = errors.New("project removed")
 
 type Origin struct {
 	Kind       string `json:"kind"`
@@ -30,6 +33,7 @@ type Manifest struct {
 	Name        string `json:"name"`
 	Origin      Origin `json:"origin"`
 	WorkspaceID string `json:"workspaceId,omitempty"`
+	Removed     bool   `json:"removed,omitempty"`
 }
 type Info struct {
 	ID string `json:"id"`
@@ -66,6 +70,9 @@ func Read(root, id string) (Info, error) {
 	if json.Unmarshal(data, &m) != nil || m.Version != 1 || strings.TrimSpace(m.Name) == "" {
 		return Info{}, fmt.Errorf("invalid project manifest")
 	}
+	if m.Removed {
+		return Info{}, errRemoved
+	}
 	return Info{ID: id, Manifest: m}, nil
 }
 func List(root string) ([]Info, error) {
@@ -82,6 +89,9 @@ func List(root string) ([]Info, error) {
 			continue
 		}
 		info, err := Read(root, entry.Name())
+		if errors.Is(err, errRemoved) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -98,6 +108,7 @@ func Create(root string, manifest Manifest, files map[string][]byte) (Info, erro
 		return Info{}, fmt.Errorf("project name must be 1–120 characters")
 	}
 	manifest.Version = 1
+	manifest.Removed = false
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return Info{}, err
 	}

@@ -10,6 +10,7 @@ import { layoutFlow } from '../flowLayout'
 import { canPlaceElement, type DropPosition } from '../elementDrag'
 import { visibleOwner } from '../sourceNavigation'
 import { routeModelEdges } from '../modelDiagramRouting'
+import { labelWidth } from '../relationshipLabels'
 import { Link2, Plus, Wand2 } from 'lucide-react'
 import { API_BASE, getLayout, putLayout } from '../api'
 import type {
@@ -103,7 +104,7 @@ function computeLayout(
     height?: number
     width?: number
   }>,
-  edges: Array<{ source: string; target: string }>,
+  edges: Edge[],
   mode: DiagramMode,
 ): Record<string, { x: number; y: number }> {
   const sized = nodes.map(node => ({
@@ -112,7 +113,9 @@ function computeLayout(
     height: node.height ?? estimateHeight(node.element, node.ports.length, node.attributes.length, node.doc),
   }))
   const direction = mode === 'interconnection' ? 'LR' : 'TB'
-  const positions = layoutFlow(sized, edges, direction, 48, 84)
+  const longest = edges.reduce((width, edge) => Math.max(width, labelWidth(String(edge.label ?? ''))), 0)
+  const gap = Math.max(48, Math.min(144, Math.ceil(longest + 20)))
+  const positions = layoutFlow(sized, edges, direction, gap, gap + 32)
   return Object.fromEntries(Object.entries(positions).map(([id, position]) => [
     id, { x: position.x + 48, y: position.y + 48 },
   ]))
@@ -152,7 +155,6 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
   })
   const portsByNode = new Map(nodes.map((n) => [n.id, n.ports]))
 
-  const edgePairs: Array<{ source: string; target: string }> = []
   const edges: Array<Edge<EdgeData>> = []
 
   if (mode === 'interconnection') {
@@ -172,7 +174,6 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
         ? conn.shortName : conn.name
       const label = [name, !sourceMatch && sourcePort?.kind === 'port' && conn.source,
         !targetMatch && targetPort?.kind === 'port' && conn.target].filter(Boolean).join(' · ')
-      edgePairs.push({ source, target })
       edges.push({
         id: conn.id,
         source,
@@ -187,7 +188,6 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
   } else {
     for (const child of childrenOf(model, scope.id)) {
       if (!nodeIds.has(child.id)) continue
-      edgePairs.push({ source: scope.id, target: child.id })
       edges.push({
         id: `contain-${child.id}`,
         source: scope.id,
@@ -198,7 +198,7 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
     }
   }
 
-  return { nodes, edges, edgePairs }
+  return { nodes, edges }
 }
 
 export default function DiagramView({
@@ -217,12 +217,13 @@ export default function DiagramView({
   const model = file.model
   const [glyphs, setGlyphs] = useState<Record<string, SceneNode>>({})
   const [glyphError, setGlyphError] = useState('')
+  const [glyphRevision, setGlyphRevision] = useState('')
   useEffect(() => {
     const stop = new AbortController();setGlyphError('')
     fetch(`${API_BASE}/files/${encodeURIComponent(file.name)}/diagram/nodes`, {signal:stop.signal,headers:{'If-Match':file.revision}})
       .then(async response => { if (!response.ok) throw new Error((await response.json()).error || 'Could not draw model elements'); return response.json() })
-      .then(value => {if (!stop.signal.aborted) setGlyphs(value)})
-      .catch(error => {if (!stop.signal.aborted) setGlyphError(error.message)})
+      .then(value => {if (!stop.signal.aborted) { setGlyphs(value); setGlyphRevision(file.revision) }})
+      .catch(error => {if (!stop.signal.aborted) { setGlyphError(error.message); setGlyphRevision(file.revision) }})
     return () => stop.abort()
   }, [file.name,file.revision,paletteRevision])
   const [mode, setMode] = useState<DiagramMode>('interconnection')
@@ -230,10 +231,16 @@ export default function DiagramView({
   const [layout, setLayout] = useState<LayoutFile>({})
   const [layoutLoaded, setLayoutLoaded] = useState(false)
   const [fitRevision, setFitRevision] = useState(0)
+  const [manual, setManual] = useState<{ key: string; positions: Record<string, { x: number; y: number }> }>()
+  const scopeKey = JSON.stringify([file.name, scopeId, mode])
+  useEffect(() => {
+    setManual(current => current?.key === scopeKey ? current : undefined)
+  }, [scopeKey])
+  useEffect(() => {
+    if (scopeId && layoutLoaded && glyphRevision === file.revision) setFitRevision(revision => revision + 1)
+  }, [scopeKey, scopeId, layoutLoaded, glyphRevision, file.revision])
   const [nodes, setNodes, onNodesChange] = useNodesState<DiagramFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
-  const nodesRef = useRef<DiagramFlowNode[]>([])
-  nodesRef.current = nodes
 
   const scopes = useMemo(() => {
     const scopes = diagramScopes(model)
@@ -284,43 +291,20 @@ export default function DiagramView({
   }, [file.name])
 
   const graph = useMemo(() => {
-    if (!scope) return { nodes: [], edges: [], edgePairs: [] }
+    if (!scope) return { nodes: [], edges: [] }
     const result = buildGraph(model, scope, mode)
     return {...result,nodes:result.nodes.map(node => ({...node,height:glyphs[node.id]?.height,width:glyphs[node.id]?.width}))}
   }, [model, scope, mode, glyphs])
 
   const persistNotes = useCallback(
     (notes: Record<string, DiagramNote>) => {
-      const currentPositions: Record<string, { x: number; y: number }> = {}
-      for (const n of nodesRef.current) {
-        if (n.type === 'sysml') {
-          currentPositions[n.id] = {
-            x: Math.round(n.position.x),
-            y: Math.round(n.position.y),
-          }
-        }
-      }
-      const baseScopes = layout.version === LAYOUT_VERSION ? layout.scopes ?? {} : {}
-      const next: LayoutFile = {
-        ...layout,
-        version: LAYOUT_VERSION,
-        scopes: scope
-          ? {
-              ...baseScopes,
-              [scope.id]: {
-                ...(baseScopes[scope.id] ?? {}),
-                [mode]: currentPositions,
-              },
-            }
-          : baseScopes,
-        notes,
-      }
+      const next: LayoutFile = { ...layout, notes }
       setLayout(next)
       putLayout(file.name, next).catch(() => {
         /* non-fatal: layout is a convenience */
       })
     },
-    [file.name, layout, scope, mode],
+    [file.name, layout],
   )
 
   const findNotePosition = useCallback(
@@ -407,20 +391,23 @@ export default function DiagramView({
     [model, selectedId, graph.nodes],
   )
 
-  const positions = useMemo(() => {
-    const saved = layout.version === LAYOUT_VERSION && scope ? layout.scopes?.[scope.id]?.[mode] : undefined
-    if (saved && graph.nodes.every(node => saved[node.id])) return saved
-    // Keep known positions while the shared layout supplies newly added nodes.
-    return { ...computeLayout(graph.nodes, graph.edgePairs, mode), ...saved }
-  }, [graph, layout.scopes, layout.version, scope?.id, mode])
+  const saved = layout.version === LAYOUT_VERSION && scope ? layout.scopes?.[scope.id]?.[mode] : undefined
+  const automaticPositions = useMemo(() => computeLayout(graph.nodes, graph.edges, mode), [graph, mode])
+  const positions = useMemo(() => manual?.key === scopeKey
+    ? { ...automaticPositions, ...manual.positions } : automaticPositions, [automaticPositions, manual, scopeKey])
+  const visibleNotes = useMemo(() => {
+    const ids = new Set(graph.nodes.map(node => node.id))
+    return Object.values(layout.notes ?? {}).filter(note => ids.has(note.targetId))
+  }, [graph.nodes, layout.notes])
 
   const routedEdges = useMemo(() => {
     const boxes = graph.nodes.flatMap(node => {
       const glyph = glyphs[node.id], position = positions[node.id]
       return glyph && position ? [[node.id, { ...position, width: glyph.width, height: glyph.height, glyph }]] as const : []
     })
-    return routeModelEdges(graph.edges, new Map(boxes))
-  }, [graph, glyphs, positions])
+    const annotations = visibleNotes.map(note => ({ x: note.x, y: note.y, width: NOTE_W, height: NOTE_H }))
+    return routeModelEdges(graph.edges, new Map(boxes), annotations)
+  }, [graph, glyphs, positions, visibleNotes])
 
   // Rebuild React Flow nodes whenever the graph or saved layout changes.
   useEffect(() => {
@@ -436,8 +423,6 @@ export default function DiagramView({
       if (String(e.targetHandle ?? '').endsWith('-generic-in')) genericTargets.add(e.target)
     }
 
-    const nodeIds = new Set(graph.nodes.map((n) => n.id))
-    const visibleNotes = Object.values(layout.notes ?? {}).filter((n) => nodeIds.has(n.targetId))
     for (const note of visibleNotes) genericTargets.add(note.targetId)
 
     const rfNodes: SysmlFlowNode[] = graph.nodes.map((n) => ({
@@ -489,7 +474,7 @@ export default function DiagramView({
     setNodes([...rfNodes, ...noteNodes])
     setEdges([...routedEdges.map(edge => ({ ...edge, selected: edge.id === selectedId })), ...noteEdges])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, layout.notes, positions, routedEdges, scope?.id, layoutLoaded, selectedId, highlightedId, onNoteChange, onNoteDelete, model, glyphs])
+  }, [graph, visibleNotes, positions, routedEdges, scope?.id, selectedId, highlightedId, onNoteChange, onNoteDelete, model, glyphs])
 
   // Keep selection styling in sync without resetting positions.
   useEffect(() => {
@@ -548,18 +533,14 @@ export default function DiagramView({
           positions[n.id] = { x: Math.round(position.x), y: Math.round(position.y) }
         }
       }
+      setManual({ key: scopeKey, positions })
       persistLayout(positions)
     },
-    [nodes, layout.notes, persistNotes, persistLayout],
+    [nodes, layout.notes, persistNotes, persistLayout, scopeKey],
   )
 
   const autoLayout = () => {
-    if (!scope) return
-    const positions = computeLayout(graph.nodes, graph.edgePairs, mode)
-    setNodes((current) =>
-      current.map((n) => ({ ...n, position: positions[n.id] ?? n.position })),
-    )
-    persistLayout(positions)
+    setManual(undefined)
     setFitRevision(revision => revision + 1)
   }
 
@@ -573,11 +554,10 @@ export default function DiagramView({
       return
     }
     const geometry = displayed ? positions : layout.scopes?.[owner.id]?.[mode] ?? {}
-    persistLayout({ ...geometry, [id]: { x: Math.round(point.x), y: Math.round(point.y) } }, owner.id)
-    if (owner.id !== scope?.id) {
-      setScopeId(owner.id)
-      setFitRevision(revision => revision + 1)
-    }
+    const placed = { ...geometry, [id]: { x: Math.round(point.x), y: Math.round(point.y) } }
+    setManual({ key: JSON.stringify([file.name, owner.id, mode]), positions: placed })
+    persistLayout(placed, owner.id)
+    if (owner.id !== scope?.id) setScopeId(owner.id)
     onSelect(id)
   }
 
@@ -611,23 +591,27 @@ export default function DiagramView({
 
   return (
     <>
-      <div className="view-toolbar diagram-toolbar">
+      <div className="view-toolbar diagram-toolbar model-diagram-toolbar">
         {navigation}
-        <select className="select input-sm diagram-scope" aria-label="Model scope" value={scopeId}
+        <select className="select input-sm diagram-scope" aria-label="Model scope" value={scopeId} title={scope.qname}
           onChange={e => setScopeId(e.target.value)}>
           {scopes.map(item => <option key={item.id} value={item.id}>{item.qname}</option>)}
         </select>
-        <select className="select input-sm" aria-label="Diagram projection" value={mode}
+        <select className="select input-sm diagram-projection" aria-label="Diagram projection" value={mode}
           onChange={e => setMode(e.target.value as DiagramMode)}>
           <option value="interconnection">Interconnection</option>
           <option value="containment">Containment</option>
         </select>
-        <div className="grow" />
-        <button className="btn btn-sm" onClick={autoLayout}><Wand2 size={14} /> Auto layout</button>
+        <button type="button" className="icon-button tooltip" aria-label="Auto layout" data-tip="Auto layout"
+          onClick={autoLayout}><Wand2 size={15} /></button>
         <ActionMenu label="Diagram actions" iconOnly>
           <button onClick={() => onAddElement(scope.id)}>Add part</button>
           <button onClick={() => onOpenAddConnection(scope.id)}>Add connection</button>
           <button onClick={addNote} disabled={graph.nodes.length === 0}>Add note</button>
+          {saved && <button onClick={() => {
+            setManual({ key: scopeKey, positions: saved })
+            setFitRevision(revision => revision + 1)
+          }}>Restore saved positions</button>}
         </ActionMenu>
       </div>
 
@@ -646,7 +630,7 @@ export default function DiagramView({
           </div>
         ) : (
           <>
-            <DiagramCanvas elementDrop={{ file: file.name, place: placeElement }} split={split} frameTitle={displayName(scope)} fitRevision={fitRevision}
+            <DiagramCanvas elementDrop={{ file: file.name, place: placeElement }} split={split} frameTitle={displayName(scope)} fitRevision={fitRevision} includeRoutes
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}

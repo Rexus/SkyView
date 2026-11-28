@@ -1,13 +1,12 @@
 import dagre from 'dagre'
-import { boxKey, boxesOf } from './sharedViews.ts'
-import type { Box, Point, SharedView } from './sharedViews.ts'
+import type { Box, Point } from './sharedViews.ts'
 
 export type RouteBox = Pick<Box, 'x' | 'y' | 'width' | 'height'>
 export type RouteSide = 'left' | 'right' | 'top' | 'bottom'
 export type RouteSegment = [Point, Point]
 
 const equal = (a: Point, b: Point) => a[0] === b[0] && a[1] === b[1]
-function blocked(a: Point, b: Point, rect: RouteBox) {
+export function blocked(a: Point, b: Point, rect: RouteBox) {
  const right = rect.x + rect.width, bottom = rect.y + rect.height
  if (a[0] === b[0]) return a[0] > rect.x && a[0] < right && Math.max(a[1], b[1]) > rect.y && Math.min(a[1], b[1]) < bottom
  return a[1] > rect.y && a[1] < bottom && Math.max(a[0], b[0]) > rect.x && Math.min(a[0], b[0]) < right
@@ -42,7 +41,7 @@ function interference(a: Point, b: Point, occupied: RouteSegment[]) {
    if (c[across] !== a[across]) continue
    const overlap = Math.min(Math.max(a[along], b[along]), Math.max(c[along], d[along]))
     - Math.max(Math.min(a[along], b[along]), Math.min(c[along], d[along]))
-   if (overlap > 0) cost += 20 + overlap * .7
+   if (overlap > 0) cost += 30 + overlap * 2.5
   } else if (within(c[along], a[along], b[along]) && within(a[across], c[across], d[across]) &&
      !equal(a, c) && !equal(a, d) && !equal(b, c) && !equal(b, d)) {
    cost += 80
@@ -133,34 +132,4 @@ export function routeLabel(points: Point[]): Point {
  }
  const [a, b] = longest
  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 10]
-}
-
-export function routeEdges(view: SharedView, previous?: SharedView, improve = false) {
- const nodes = new Map(view.nodes.map(n => [n.element, n]))
- const old = new Map(previous?.nodes.map(n => [n.element, n]) ?? [])
- const boxes = new Map(boxesOf(view).map(b => [boxKey(b), b]))
- const parents = (key: string) => { const result = new Set<string>(); let p = boxes.get(key)?.parent; while (p && !result.has(p)) { result.add(p); p = boxes.get(p)?.parent } return result }
- const occupied: RouteSegment[] = []
- for (const edge of view.edges) {
-  const a = nodes.get(edge.from)!, b = nodes.get(edge.to)!
-  const oa = old.get(edge.from), ob = old.get(edge.to)
-  const fromParents = parents(edge.from), toParents = parents(edge.to)
-  const ancestors = new Set([...fromParents, ...toParents])
-  const obstacles = view.nodes.filter(n => !ancestors.has(n.element))
-  const lockedInterior = [...fromParents].some(id => toParents.has(id) && boxes.get(id)?.layout?.locked)
-  const clear = edge.points.every((point, i) => !i || obstacles.every(n => !blocked(edge.points[i - 1], point, n)))
-  // Preserve translated interior geometry. A moved unrelated obstacle can still
-  // require rerouting an unlocked edge whose endpoints did not move.
-  const sameTranslation = oa && ob && a.width === oa.width && a.height === oa.height &&
-   b.width === ob.width && b.height === ob.height && a.x - oa.x === b.x - ob.x && a.y - oa.y === b.y - ob.y
-  if (edge.points.length >= 2 && sameTranslation && (lockedInterior || (clear && !improve))) {
-   occupied.push(...segments(edge.points))
-   continue
-  }
-  const [from, to] = facingSides(a, b)
-  const start = anchor(a, from), end = anchor(b, to)
-  edge.points = routeOrthogonal(start, end, obstacles, { x: 8, y: 8, width: view.width - 16, height: view.height - 16 }, occupied)
-  edge.label = routeLabel(edge.points)
-  occupied.push(...segments(edge.points))
- }
 }

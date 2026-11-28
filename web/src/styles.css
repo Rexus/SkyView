@@ -568,10 +568,6 @@ a {
   color: var(--text-dim);
 }
 
-.viewbar-spacer {
-  flex: 1;
-}
-
 .viewbar-actions {
   display: flex;
   align-items: center;
@@ -2308,9 +2304,6 @@ a {
   }
   .cmd-trigger span {
     display: none;
-  }
-  .viewbar {
-    overflow-x: auto;
   }
 }
 

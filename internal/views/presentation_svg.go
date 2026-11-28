@@ -33,10 +33,11 @@ func drawPresentation(source string, v View, m *sysml.Model) ([]byte, []SceneEdg
 		Palette map[string]string `json:"palette,omitempty"`
 	}{v, v.Styles, v.Palette.Colours})
 	var b bytes.Buffer
-	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g" role="img" aria-labelledby="title" data-view-id="%s">`+"\n", v.Width, v.Height, html.EscapeString(v.ID))
+	x, y := v.origin()
+	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="%g %g %g %g" role="img" aria-labelledby="title" data-view-id="%s">`+"\n", x, y, v.Width, v.Height, html.EscapeString(v.ID))
 	fmt.Fprintf(&b, "<title id=\"title\">%s</title>\n<metadata>renderer=skyview-svg-5; source-sha256=%x; view-sha256=%x</metadata>\n", html.EscapeString(v.Title), sha256.Sum256([]byte(source)), sha256.Sum256(config))
 	b.WriteString("<style>" + relationshipCSS + "</style>\n")
-	fmt.Fprintf(&b, "<rect width=\"%g\" height=\"%g\" fill=\"white\"/>\n", v.Width, v.Height)
+	fmt.Fprintf(&b, "<rect x=\"%g\" y=\"%g\" width=\"%g\" height=\"%g\" fill=\"white\"/>\n", x, y, v.Width, v.Height)
 	b.WriteString(`<defs class="diagram-relationship">
 <marker id="flow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="relationship-arrow" d="M0 0 L8 4 L0 8 Z"/></marker>
 <marker id="dependency" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="relationship-open-arrow" d="M1 1 L7 4 L1 7"/></marker>
@@ -80,9 +81,9 @@ func drawPresentation(source string, v View, m *sysml.Model) ([]byte, []SceneEdg
 		}
 		if e.Kind == "connection" || e.Kind == "flow" {
 			var fromVisible, toVisible bool
-			points, fromVisible = attachPort(points, glyphs[edge.From], e.SourceID, v.Width)
+			points, fromVisible = attachPort(points, glyphs[edge.From], e.SourceID, x, x+v.Width)
 			slices.Reverse(points)
-			points, toVisible = attachPort(points, glyphs[edge.To], e.TargetID, v.Width)
+			points, toVisible = attachPort(points, glyphs[edge.To], e.TargetID, x, x+v.Width)
 			slices.Reverse(points)
 			var suppressedPorts []string
 			if port := m.Element(e.SourceID); !fromVisible && port != nil && port.Kind == "port" {
@@ -110,7 +111,7 @@ func drawPresentation(source string, v View, m *sysml.Model) ([]byte, []SceneEdg
 
 // Saved routes govern placement, but only the native endpoint determines the
 // port. Keep the stored bends and join them from the actual boundary symbol.
-func attachPort(points [][2]float64, node SceneNode, portID string, width float64) ([][2]float64, bool) {
+func attachPort(points [][2]float64, node SceneNode, portID string, leftBound, rightBound float64) ([][2]float64, bool) {
 	for _, port := range node.Ports {
 		if port.ID != portID {
 			continue
@@ -118,9 +119,9 @@ func attachPort(points [][2]float64, node SceneNode, portID string, width float6
 		original := points[0]
 		left := node.X
 		right := node.X + node.Width
-		x, stub := left, max(0, left-8)
+		x, stub := left, max(leftBound, left-8)
 		if original[0] > (left+right)/2 || original[0] == (left+right)/2 && points[1][0] >= original[0] {
-			x, stub = right, min(width, right+8)
+			x, stub = right, min(rightBound, right+8)
 		}
 		anchor := [2]float64{x, node.Y + port.Y}
 		if anchor == original {

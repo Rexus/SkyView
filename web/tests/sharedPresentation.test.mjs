@@ -41,7 +41,8 @@ test('boundary controls save local settings, detect conflicts and reopen without
   {id:'B',shortName:'B',qname:'S::b',name:'Outside this view',kind:'part'},
  ]}}
   const pause=()=>act(()=>new Promise(r=>setTimeout(r,200)))
-  const click=async text=>act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent===text).click())
+  const click = async (name, parent = host) => act(async () =>
+    [...parent.querySelectorAll('button')].find(button => (button.getAttribute('aria-label') ?? button.textContent) === name).click())
   const select=async(label,value)=>act(async()=>{const el=[...host.querySelectorAll('label')].find(e=>e.firstChild?.textContent===label)?.querySelector('select');assert.ok(el,label);el.value=value;el.dispatchEvent(new dom.window.Event('change',{bubbles:true}))})
   await act(async()=>root.render(createElement(CustomViews,{file})));await pause()
   const settings=host.querySelector('[aria-label="Settings for Zone"]');assert.ok(settings,'keyboard-accessible boundary button missing')
@@ -60,7 +61,7 @@ test('boundary controls save local settings, detect conflicts and reopen without
   assert.match(host.querySelector('[role="status"]').textContent,/Updating preview/)
   assert.ok(host.querySelector('svg'),'slow preview blanked the previous valid drawing')
   assert.equal(host.querySelector('.react-flow__node').classList.contains('draggable'),false)
-  assert.ok([...host.querySelectorAll('button')].find(b=>b.textContent==='Save views').disabled)
+  assert.ok(host.querySelector('[aria-label="Save views"]').disabled)
   holdPreview=false;await act(async()=>releasePreview());await pause()
   let lock=host.querySelector('input[type="checkbox"]');await act(async()=>lock.click());await pause()
   assert.ok([...host.querySelectorAll('button')].find(b=>b.textContent==='Arrange contents').disabled)
@@ -84,7 +85,12 @@ test('boundary controls save local settings, detect conflicts and reopen without
   await act(async()=>host.querySelector('input[type="checkbox"]').click());await pause();await click('Save views')
   assert.match(host.querySelector('[role="alert"]').textContent,/view changed/)
   assert.equal(stored.views[0].boundaries[0].layout.locked,true,'conflict replaced saved settings')
-  await click('Revert');await pause()
+  const actions = host.querySelector('.diagram-toolbar .action-menu')
+  await act(async () => actions.querySelector('summary').click())
+  assert.equal(actions.open, true)
+  await click('Discard draft changes', actions); await pause()
+  assert.equal(actions.open, false)
+  assert.equal(host.querySelectorAll('[aria-label="Save views"]').length, 0)
   assert.ok(previews.length>=3)
  } finally {
   const {act}=await import('react');if(root)await act(async()=>root.unmount())

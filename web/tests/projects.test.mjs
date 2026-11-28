@@ -19,7 +19,9 @@ test('project controls preserve drafts, expose import choices and scope every fi
   calls.push({url,init})
   const data = url==='/api/projects' && init.method==='POST' ? {id:'project-new',name:'Drone',workspaceId:'workspace-design',origin:{kind:'example'}} :
    url==='/api/projects' ? {workspaces:[{id:'default',name:'Default workspace'},{id:'workspace-design',name:'Design'}],projects:[{id:'project-a',name:'Cart',workspaceId:'workspace-design',origin:{kind:'upload'}},{id:'project-b',name:'Other',workspaceId:'workspace-design',origin:{kind:'new'}},{id:'workspace',name:'Workspace files',origin:{kind:'legacy'}}]} :
-   url==='/api/examples' ? {examples:[{id:'inspection-drone',name:'Drone'}]} : {}
+   url==='/api/examples' ? {examples:[{id:'inspection-drone',name:'Drone'}]} :
+   url==='/api/projects/project-a' && init.method==='PATCH' ? {id:'project-a',...JSON.parse(init.body),origin:{kind:'upload'}} :
+   url==='/api/workspaces/workspace-design' && init.method==='PATCH' ? {id:'workspace-design',...JSON.parse(init.body)} : {}
   if (url.endsWith('/export')) return {ok:false,json:async()=>({error:'Project exceeds export limits'})}
   return {ok:true,json:async()=>data,text:async()=>JSON.stringify(data)}
  }
@@ -34,6 +36,26 @@ test('project controls preserve drafts, expose import choices and scope every fi
   await act(async()=>root.render(React.createElement(ProjectBar,{sourceDirty:true,saving:false,workspaceHost:document.querySelector('#top')})))
   assert.equal(document.querySelector('#top #active-workspace').value,'workspace-design','a direct older project link resolves its workspace')
   assert.deepEqual([...host.querySelector('#active-project').options].map(option=>option.value),['project-a','project-b'],'the project list is scoped to the header selection')
+
+  const workspaceControls=document.querySelector('#top .catalog-controls')
+  const projectControls=host.querySelector('.catalog-controls')
+  assert.ok(workspaceControls.querySelector('[aria-label="New workspace"]'))
+  assert.ok(projectControls.querySelector('[aria-label="Add project"]'))
+  assert.equal(workspaceControls.querySelector('[aria-label="Project actions"]'),null)
+  assert.equal(projectControls.querySelector('[aria-label="Workspace actions"]'),null)
+  const item=(controls,label)=>[...controls.querySelectorAll('button')].find(button=>button.textContent.trim()===label)
+  assert.ok(item(workspaceControls,'Remove workspace').disabled,'a workspace with projects cannot be removed')
+  assert.ok(item(projectControls,'Remove project').disabled,'removal protects unsaved project changes')
+  await act(async()=>item(workspaceControls,'Workspace settings').click())
+  assert.equal(host.querySelector('[role="dialog"] input').value,'Design')
+  await act(async()=>host.querySelector('[role="dialog"] button[type="submit"]').click())
+  assert.equal(calls.at(-1).url,'/api/workspaces/workspace-design')
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body),{name:'Design'})
+  await act(async()=>item(projectControls,'Project settings').click())
+  assert.equal(host.querySelector('[role="dialog"] input').value,'Cart')
+  await act(async()=>host.querySelector('[role="dialog"] button[type="submit"]').click())
+  assert.equal(calls.at(-1).url,'/api/projects/project-a')
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body),{name:'Cart',workspaceId:'workspace-design'})
   await act(async()=>{const select=document.querySelector('#active-workspace');select.value='default';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}))})
   assert.match(host.textContent,/Discard unsaved changes/,'switching workspaces protects the current draft')
   await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent.trim()==='Cancel').click())
@@ -50,7 +72,7 @@ test('project controls preserve drafts, expose import choices and scope every fi
   })
   await click('Cancel')
   assert.equal(host.querySelector('#active-project').value,'project-a','cancel keeps current project')
-  await click('Add project')
+  await act(async()=>projectControls.querySelector('[aria-label="Add project"]').click())
   await click('Use example')
   const created=calls.find(c=>c.init.method==='POST')
   assert.deepEqual(JSON.parse(created.init.body),{name:'Drone',example:'inspection-drone',workspaceId:'workspace-design'})

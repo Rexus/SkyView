@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, Background, BackgroundVariant, MiniMap, Panel, ViewportPortal,
-  getNodesBounds, useReactFlow, useStore, type Node, type Edge, type ReactFlowProps, type ReactFlowInstance, type NodeProps, type Rect,
+  getNodesBounds, useNodesInitialized, useReactFlow, useStore, useStoreApi,
+  type Node, type Edge, type ReactFlowProps, type ReactFlowInstance, type NodeProps, type Rect,
 } from '@xyflow/react'
 import { Hand, Map, Maximize, Minus, MousePointer2, Plus } from 'lucide-react'
 import SysmlNode, { GlyphNode, type SysmlNodeData } from './SysmlNode'
 import NoteNode from './NoteNode'
 import RelationshipEdge from './RelationshipEdge'
 import { PROJECT_ID } from '../api'
+import type { Point } from '../sharedViews'
 import { elementDragType, readElementDrag, type DropPosition } from '../elementDrag'
 
 function BoundaryNode({ data, selected }: NodeProps) {
@@ -25,34 +27,66 @@ function scopeFrame(bounds: Rect) {
   return { x: bounds.x - 24, y: bounds.y - 28, width: bounds.width + 48, height: bounds.height + 52 }
 }
 
-function CanvasTools({ title, fitRevision, split, hand, onHand }: {
+function withRouteBounds(bounds: Rect, edges: Edge[]): Rect {
+  if (!bounds.width || !bounds.height) return bounds
+  let { x, y } = bounds
+  let right = x + bounds.width, bottom = y + bounds.height
+  for (const { data } of edges) {
+    const geometry = data as { points?: Point[]; labelBounds?: Rect } | undefined
+    for (const [u, v] of geometry?.points ?? []) {
+      x = Math.min(x, u); y = Math.min(y, v)
+      right = Math.max(right, u); bottom = Math.max(bottom, v)
+    }
+    const label = geometry?.labelBounds
+    if (label) {
+      x = Math.min(x, label.x); y = Math.min(y, label.y)
+      right = Math.max(right, label.x + label.width); bottom = Math.max(bottom, label.y + label.height)
+    }
+  }
+  return { x, y, width: right - x, height: bottom - y }
+}
+
+function CanvasTools({ title, fitRevision, split, hand, onHand, includeRoutes }: {
   title?: string
   fitRevision: number
   split: boolean
   hand: boolean
   onHand: (hand: boolean) => void
+  includeRoutes: boolean
 }) {
   const flow = useReactFlow()
+  const store = useStoreApi()
+  const measured = useNodesInitialized()
+  const width = useStore(state => state.width)
+  const height = useStore(state => state.height)
   const [map, setMap] = useState(false)
-  const bounds = useStore(state => getNodesBounds(state.nodes.filter(node => !node.hidden),
-    { nodeLookup: state.nodeLookup }), boundsEqual)
+  const bounds = useStore(state => {
+    const cards = getNodesBounds(state.nodes.filter(node => !node.hidden),
+      { nodeLookup: state.nodeLookup, nodeOrigin: state.nodeOrigin })
+    return includeRoutes ? withRouteBounds(cards, state.edges) : cards
+  }, boundsEqual)
   const frame = scopeFrame(bounds)
-  const fit = (rect = frame) => {
-    if (rect) void flow.fitBounds({ ...rect, y: rect.y - 18, height: rect.height + 18 }, { padding: .08, duration: 160 })
-  }
-  const appliedFit = useRef(0)
-  const previousSplit = useRef(split)
+  const fit = useCallback(() => {
+    // Layout can replace nodes between scheduling the fit and measuring the new cards.
+    if (!flow.viewportInitialized || !store.getState().nodesInitialized) return false
+    const visible = flow.getNodes().filter(node => !node.hidden)
+    const cards = flow.getNodesBounds(visible)
+    const rect = scopeFrame(includeRoutes ? withRouteBounds(cards, flow.getEdges()) : cards)
+    if (!rect) return false
+    void flow.fitBounds({ ...rect, y: rect.y - 18, height: rect.height + 18 }, { padding: .08, duration: 160 })
+    return true
+  }, [flow, store, includeRoutes])
+  const fitKey = [fitRevision, split, width, height].join(':')
+  const appliedFit = useRef(fitKey)
   useEffect(() => {
-    if ((appliedFit.current === fitRevision && previousSplit.current === split) || !flow.viewportInitialized) return
+    if (appliedFit.current === fitKey || !flow.viewportInitialized || !measured || !width || !height) return
     const pending = requestAnimationFrame(() => {
-      const rect = scopeFrame(flow.getNodesBounds(flow.getNodes().filter(node => !node.hidden)))
-      if (!rect) return
-      appliedFit.current = fitRevision
-      previousSplit.current = split
-      fit(rect)
+      const state = store.getState()
+      if (state.width !== width || state.height !== height || !fit()) return
+      appliedFit.current = fitKey
     })
     return () => cancelAnimationFrame(pending)
-  }, [fitRevision, split, flow, bounds])
+  }, [fitKey, flow.viewportInitialized, measured, width, height, bounds, fit, store])
   return <>
     <Panel position="top-right" className="canvas-tools">
       <div role="group" aria-label="Diagram viewport tools">
@@ -66,7 +100,7 @@ function CanvasTools({ title, fitRevision, split, hand, onHand }: {
         <button type="button" className="icon-button tooltip" aria-label="Zoom out" data-tip="Zoom out"
           onClick={() => void flow.zoomOut({ duration: 110 })}><Minus size={15} /></button>
         <button type="button" className="icon-button tooltip" aria-label="Fit diagram to window" data-tip="Fit to window"
-          onClick={() => fit()} disabled={!frame}><Maximize size={15} /></button>
+          onClick={() => fit()} disabled={!measured || !frame}><Maximize size={15} /></button>
         <button type="button" className="icon-button tooltip" aria-label="Overview map" data-tip="Overview map"
           aria-pressed={map} onClick={() => setMap(value => !value)}><Map size={15} /></button>
       </div>
@@ -84,10 +118,11 @@ function CanvasTools({ title, fitRevision, split, hand, onHand }: {
 
 /** One interactive canvas, viewport and scope frame for automatic and saved views. */
 export default function DiagramCanvas<N extends Node = Node, E extends Edge = Edge>({
-  frameTitle, fitRevision = 0, split = false, elementDrop, ...props
+  frameTitle, fitRevision = 0, split = false, elementDrop, includeRoutes = false, ...props
 }: ReactFlowProps<N, E> & {
   frameTitle?: string
   fitRevision?: number
+  includeRoutes?: boolean
   split?: boolean
   elementDrop?: { file: string; place: (id: string, position: DropPosition) => void }
 }) {
@@ -116,10 +151,10 @@ export default function DiagramCanvas<N extends Node = Node, E extends Edge = Ed
       onNodeClick={hand ? undefined : props.onNodeClick} onEdgeClick={hand ? undefined : props.onEdgeClick}
       panOnDrag={hand ? true : [1, 2]} elementsSelectable={!hand}
       nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: .22, maxZoom: 1 }}
-      minZoom={.1} maxZoom={2.5} proOptions={{ hideAttribution: true }} deleteKeyCode={null}
+      minZoom={.0001} maxZoom={2.5} proOptions={{ hideAttribution: true }} deleteKeyCode={null}
       defaultEdgeOptions={{ type: 'smoothstep' }}>
       <Background variant={BackgroundVariant.Dots} gap={21} size={.8} color="var(--grid-dot)" />
-      <CanvasTools split={split} title={frameTitle} fitRevision={fitRevision} hand={hand} onHand={setHand} />
+      <CanvasTools split={split} title={frameTitle} fitRevision={fitRevision} hand={hand} onHand={setHand} includeRoutes={includeRoutes} />
     </ReactFlow>
   </div>
 }

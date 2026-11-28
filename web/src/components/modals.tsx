@@ -670,14 +670,15 @@ export function ConfirmModal({
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const close = () => { if (!busy) onClose() }
   return (
     <Modal
       title={title}
       icon={danger ? <Trash2 size={18} /> : <CircleAlert size={18} />}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn" disabled={busy} onClick={close}>Cancel</button>
           <button
             className={danger ? 'btn btn-danger' : 'btn btn-primary'}
             disabled={busy}
@@ -699,7 +700,7 @@ export function ConfirmModal({
       }
     >
       <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13 }}>{message}</p>
-      {error && <div className="form-error">{error}</div>}
+      {error && <div role="alert" className="form-error">{error}</div>}
     </Modal>
   )
 }
