@@ -1,7 +1,7 @@
 # Inverted pendulum example
 
 A cart moves along a horizontal rail to swing a hinged rod from downward rest into upright balance.
-Open [InvertedPendulum.sysml](../examples/inverted-pendulum/InvertedPendulum.sysml) in SkyView to explore the mechanics,
+Open [InvertedPendulum.sysml](../examples/inverted-pendulum/models/InvertedPendulum.sysml) in SkyView to explore the mechanics,
 control loop, requirements, operating sequence and planned verification cases.
 
 [![Native-model-derived control loop](images/pendulum-control.svg)](images/pendulum-control.svg)
@@ -43,12 +43,12 @@ from the SkyView repository root. They also work in a Linux shell:
 
 ```sh
 python3 -m venv ~/.cache/skyview/pendulum-venv
-~/.cache/skyview/pendulum-venv/bin/python -m pip install -r scripts/pendulum/requirements.txt
-~/.cache/skyview/pendulum-venv/bin/python scripts/pendulum/run.py
+~/.cache/skyview/pendulum-venv/bin/python -m pip install -r examples/inverted-pendulum/simulation/requirements.txt
+~/.cache/skyview/pendulum-venv/bin/python examples/inverted-pendulum/simulation/run.py
 ```
 
 On a machine where a suitable Python environment is already active, the last two commands become
-`python -m pip install -r scripts/pendulum/requirements.txt` and `python scripts/pendulum/run.py`.
+`python -m pip install -r examples/inverted-pendulum/simulation/requirements.txt` and `python examples/inverted-pendulum/simulation/run.py`.
 No MATLAB or Simulink installation is required. NumPy, SciPy and Matplotlib are optional scientific
 analysis dependencies, separate from SkyView's Go runtime; see [third-party notices](../THIRD_PARTY_NOTICES.md#optional-pendulum-analysis-tools).
 
@@ -71,7 +71,7 @@ The example follows the cart-pole energy-shaping and local-balance approach desc
 Underactuated Robotics notes [1]. The implementation is original and extends the ideal point-mass
 case to a uniform rigid rod, with pivot inertia derived from mass and center-of-mass distance.
 The exact equations and the upright linearization have one implementation in
-[dynamics.py](../scripts/pendulum/dynamics.py); the native model owns their parameters and binding.
+[dynamics.py](../examples/inverted-pendulum/simulation/dynamics.py); the native model owns their parameters and binding.
 
 A short force kick breaks the exact downward equilibrium. Energy shaping with cart-centering feedback
 raises the rod; an angle/speed gate hands over to continuous-design LQR, executed at the sampling rate.
@@ -124,8 +124,10 @@ absolute cart travel was 1.774 m and maximum actuator force was 14.997 N. These 
 for the stated model, not evidence from a physical pendulum. The source-bound
 [recorded report](pendulum-results.json) contains the complete numerical evidence and fingerprints.
 
-The complete native model and standard libraries passed the official pilot **2026-09.1**, kernel **0.63.1**,
-with Java 21. Review covered rod inertia/sign convention, units, physical-versus-signal relationships,
+The complete project passes the published **2026-04** baseline, kernel **0.59.0**, with Java 21.
+There are no project errors; 96 inherited official-library findings remain visible separately, including
+repeated uses of affected quantity types. See the [current validation record](sysml-validation.json)
+and [checking policy](standards.md). Review covered rod inertia/sign convention, units, physical-versus-signal relationships,
 port directions, controller handover, requirement subjects and verification bindings. SkyView's Go checks
 passed; its running model API reported zero diagnostics and preserved the downloaded source exactly.
 Regression tests cover all 13 connections and five verification references, plus unknown units and
@@ -135,11 +137,12 @@ The pendulum was opened through the built-in browser's example picker on 2026-11
 zero diagnostics and a seven-block/seven-edge feedback diagram. Project ZIP export and re-import
 were exercised too. The two generated figures above were inspected locally. GitHub/GitLab checks now
 run the same Python entry point and retain results on failure; hosted execution awaits publication.
-CI checks generated-input freshness, not native SysML parsing. Native revalidation remains required after edits.
+CI checks generated-input freshness and runs native SysML validation through the shared repository gate.
+Native revalidation remains required after model edits.
 
 ## Change parameters or topology
 
-`examples/inverted-pendulum/InvertedPendulum.sysml` is authoritative. `scripts/pendulum/model.json` is a small generated
+`examples/inverted-pendulum/models/InvertedPendulum.sysml` is authoritative. `examples/inverted-pendulum/simulation/model.json` is a small generated
 projection of the official resolved export; do not edit it by hand. It carries normalized-source SHA-256,
 parameters/dimensions, model identities, typed signal connections and verification targets. Line endings
 are normalized to LF for freshness checks so Windows and Linux checkouts agree.
@@ -148,9 +151,9 @@ After a source edit, use Java 21 and the official kernel/libraries as described 
 [drone validation setup](drone-example.md#regenerate-the-sequence-preview). In PowerShell at the repo root:
 
 ```powershell
-& $env:SYSML_JAVA -cp $env:SYSML_KERNEL scripts/ExportSysML.java $env:SYSML_LIBRARY examples/inverted-pendulum/InvertedPendulum.sysml InvertedPendulum bin/pendulum-native.json
+& $env:SYSML_JAVA -cp $env:SYSML_KERNEL scripts/ExportSysML.java $env:SYSML_LIBRARY examples/inverted-pendulum/models/InvertedPendulum.sysml InvertedPendulum bin/pendulum-native.json
 if ($LASTEXITCODE -ne 0) { throw 'Native SysML validation failed' }
-python scripts/pendulum/model.py bin/pendulum-native.json
+python examples/inverted-pendulum/simulation/model.py bin/pendulum-native.json
 if ($LASTEXITCODE -ne 0) { throw 'Model projection failed' }
 ```
 
@@ -173,4 +176,4 @@ Failure is a valid experimental outcome; keep the acceptance criteria independen
 3. SciPy, [solve_continuous_are](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_continuous_are.html).
 4. MathWorks, [Create a simple Simulink model](https://www.mathworks.com/help/simulink/gs/create-a-simple-model.html): block/signal presentation context; no MathWorks code or models are included.
 5. OMG, [SysML 2.0](https://www.omg.org/spec/SysML/2.0): language authority.
-6. Systems Modeling, [official pilot 2026-09.1](https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation/releases/tag/2026-09.1): native validator and standard libraries.
+6. Systems Modeling, [official pilot 2026-04](https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation/releases/tag/2026-04): native validator and standard libraries.

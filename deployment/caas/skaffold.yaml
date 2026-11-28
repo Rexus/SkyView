@@ -1,0 +1,34 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: skyview
+build:
+  artifacts:
+    - image: registry.example.com/library/skyview
+      custom:
+        buildCommand: bash deployment/caas/build-image.sh
+        dependencies:
+          paths:
+            - "**/*.go"
+            - go.mod
+            - .version
+            - deployment/build-metadata.sh
+            - deployment/docker/build.sh
+            - "web/**"
+            - "internal/server/dist/**"
+            - deployment/docker/Dockerfile
+            - deployment/caas/build-image.sh
+            - .dockerignore
+            - examples/**
+            - internal/standards/release.json
+  local:
+    # The custom builder pushes with Skopeo using the registry login.
+    # The cluster pulls the resulting image from the registry.
+    push: true
+manifests:
+  kustomize:
+    paths:
+      - deployment/caas
+deploy:
+  kubectl: {}
+  statusCheckDeadlineSeconds: 180

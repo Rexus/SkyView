@@ -53,7 +53,7 @@ On 2026-11-27, Go 1.27.4 was installed from AlmaLinux AppStream in the existing
 - Model saving, snapshot creation, exact restore and layout storage passed in a disposable workspace.
 - Smart App Control remained enabled; its `VerifiedAndReputableDesktop` policy was unchanged.
 
-Use the [WSL startup path](local-development.md#windows-with-almalinux-wsl) for local development
+Use the [WSL startup path](../deployment/go/README.md#windows-with-almalinux-wsl) for local development
 while retaining Smart App Control. The Windows-native execution limitation above still applies.
 
 ## Continuing development

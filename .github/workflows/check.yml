@@ -2,8 +2,9 @@ name: Check and build
 
 on:
   push:
-    branches: [main]
+    branches: [main, "codex/**"]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -28,8 +29,8 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
-      - run: go test -timeout 90s ./cmd/... ./internal/... ./examples/...
-      - run: go vet ./cmd/... ./internal/... ./examples/...
+      - run: go test -timeout 90s . ./cmd/... ./internal/... ./examples/...
+      - run: go vet . ./cmd/... ./internal/... ./examples/...
       - run: go build -o bin/skyview ./cmd/skyview
 
   pendulum:
@@ -37,11 +38,30 @@ jobs:
     container: python:3.12-slim
     steps:
       - uses: actions/checkout@v7
-      - run: python -m pip install -r scripts/pendulum/requirements.txt
-      - run: python scripts/pendulum/run.py
+      - run: python -m pip install -r examples/inverted-pendulum/simulation/requirements.txt
+      - run: python examples/inverted-pendulum/simulation/run.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pendulum-results
           path: bin/pendulum-results/
+          retention-days: 7
+
+  sysml:
+    runs-on: ubuntu-latest
+    container: eclipse-temurin:21-jdk-jammy
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go run ./cmd/skyview standards-setup -report bin/sysml-validation/setup.json
+      - run: SKYVIEW_NATIVE_TESTS=1 go test -timeout 300s ./internal/standards
+      - run: go run ./cmd/skyview lint -repository -timeout 5m -report bin/sysml-validation/latest.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sysml-validation
+          path: bin/sysml-validation/
           retention-days: 7

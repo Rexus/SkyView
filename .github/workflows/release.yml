@@ -1,0 +1,108 @@
+name: SkyView release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'Rexus/SkyView'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify signed tag and version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash deployment/release/verify.sh "$RELEASE_TAG"
+
+  checks:
+    needs: verify
+    uses: ./.github/workflows/check.yml
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      IMAGE: ghcr.io/rexus/skyview
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: docker/setup-buildx-action@v4
+      - name: Confirm release target is still valid
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash deployment/release/verify.sh "$RELEASE_TAG"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'This tag already has a published release'
+            exit 1
+          fi
+      - name: Build and publish OCI image
+        id: image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+          SYSML_CHANNEL: locked
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          SKYVIEW_RELEASE_TAG="$RELEASE_TAG" SYSML_REFRESH=0 bash deployment/docker/build.sh \
+            --platform linux/amd64 --push --provenance=mode=max --sbom=true \
+            --metadata-file "$RUNNER_TEMP/image.json" --tag "$IMAGE:$RELEASE_TAG"
+          digest=$(jq -er '."containerimage.digest"' "$RUNNER_TEMP/image.json")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          docker run --rm "$IMAGE@$digest" version -json |
+            jq -e --arg tag "$RELEASE_TAG" --arg revision "$(git rev-parse HEAD)" \
+              '.official and .tag == $tag and .revision == $revision' >/dev/null
+      - name: Build release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash deployment/release/build-binaries.sh "$RELEASE_TAG"
+      - uses: actions/attest@v4
+        with:
+          subject-path: |
+            bin/release/*.tar.gz
+            bin/release/*.zip
+            bin/release/SHA256SUMS
+            bin/release/build-info.json
+      - uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease --latest=false); fi
+          gh release create "$RELEASE_TAG" bin/release/*.tar.gz bin/release/*.zip \
+            bin/release/SHA256SUMS bin/release/build-info.json \
+            --verify-tag --generate-notes --notes "Container image: $IMAGE@$IMAGE_DIGEST" "${flags[@]}"

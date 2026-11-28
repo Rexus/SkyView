@@ -1,0 +1,143 @@
+package views
+
+import (
+	"bytes"
+	"encoding/json"
+	"github.com/Rexus/SkyView/internal/sysml"
+	"strings"
+	"testing"
+)
+
+func TestInteractiveSceneAndExportShareDrawing(t *testing.T) {
+	c := presentationFixture()
+	raw, _ := json.Marshal(c)
+	p, _ := Parse(raw)
+	v := p.Views[0]
+	scene, err := BuildScene(presentationSource, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := Render(presentationSource, v)
+	if err != nil || !bytes.Equal(exported, []byte(scene.SVG)) {
+		t.Fatal("interactive/export disagreement", err)
+	}
+	if !bytes.Contains(exported, []byte(RelationshipCSS())) || !strings.Contains(scene.Edges[0].SVG, "relationship-line") {
+		t.Fatal("export does not use the shared relationship stylesheet")
+	}
+	_, groups, err := drawingGroups(exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := sysml.Parse(presentationSource)
+	if len(scene.Nodes) != 5 || len(scene.Edges) != 1 {
+		t.Fatal("missing interactive objects")
+	}
+	for _, n := range scene.Nodes {
+		kind := "model:"
+		if n.Annotation {
+			kind = "boundary:"
+			if n.ElementID != "" {
+				t.Fatal("annotation acquired native identity")
+			}
+		} else {
+			e, _ := m.Select(n.Key)
+			if e.ID != n.ElementID {
+				t.Fatal("wrong native identity")
+			}
+		}
+		if !strings.Contains(n.SVG, groups[kind+n.Key]) {
+			t.Fatal("glyph differs from export")
+		}
+	}
+	if !strings.Contains(scene.Edges[0].SVG, `data-kind="flow"`) {
+		t.Fatal("lost native relation kind")
+	}
+	if len(scene.Nodes[2].Ports) != 1 {
+		t.Fatal("native port handles missing")
+	}
+}
+func TestDetailedNativeNodeIsSharedWithSavedView(t *testing.T) {
+	defaults := DetailedNodes(presentationSource)
+	m := sysml.Parse(presentationSource)
+	a, _ := m.Select("A")
+	glyph := defaults[a.ID]
+	if len(glyph.Ports) != 1 || !strings.Contains(glyph.SVG, "io : Transfer") {
+		t.Fatal("missing native compartment")
+	}
+	c := Config{Version: 2, Styles: map[string]Style{"legacy": {Fill: "#ff0000"}}, Views: []View{{
+		ID: "comparison", Title: "Comparison", Owner: ".", Subject: "A", Width: 500, Height: 300, Presentation: true,
+		Nodes: []Node{{Element: "A", X: 30, Y: 40, Width: glyph.Width, Height: glyph.Height,
+			Shape: "cylinder", Style: "legacy", Labels: []Label{{Text: "Imported artwork", X: 40, Y: 40, Size: 13}}}},
+	}}}
+
+	raw, _ := json.Marshal(c)
+	p, _ := Parse(raw)
+	scene, err := BuildScene(presentationSource, p.Views[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(scene.SVG, glyph.SVG) {
+		t.Fatal("saved view used another native node template")
+	}
+	if strings.Contains(scene.SVG, "Imported artwork") || strings.Contains(scene.SVG, "#ff0000") {
+		t.Fatal("saved presentation bypassed native notation")
+	}
+	if strings.Contains(glyph.SVG, "<script>") {
+		t.Fatal("unsafe glyph")
+	}
+}
+func TestSceneRejectsReversedRelationship(t *testing.T) {
+	c := presentationFixture()
+	raw, _ := json.Marshal(c)
+	p, _ := Parse(raw)
+	p.Views[0].Edges[0].From = "B"
+	if _, err := BuildScene(presentationSource, p.Views[0]); err == nil {
+		t.Fatal("scene bypassed source relationship validation")
+	}
+}
+
+func TestSavedConnectionsMeetTheNativePort(t *testing.T) {
+	source := strings.Replace(presentationSource, "port io : Transfer;", "port io : Transfer; port feedback : Transfer;", 1)
+	source = strings.Replace(source, "flow <'FLOW'>", "connection wiring connect a.feedback to b.io; flow <'FLOW'>", 1)
+	config := presentationFixture()
+	v := config.Views[0]
+	v.Styles = config.Styles
+	v.Edges[0].Element = "System::system::wiring"
+	original := v.Edges[0].Points[0]
+	scene, err := BuildScene(source, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edge := scene.Edges[0]
+	if edge.Label != "wiring" || !strings.Contains(edge.SVG, `data-kind="connection"`) || strings.Contains(edge.SVG, `marker-end=`) {
+		t.Fatalf("ordinary connection drew as a flow: %s", edge.SVG)
+	}
+	var sourcePort, targetPort float64
+	for _, node := range scene.Nodes {
+		for _, port := range node.Ports {
+			if node.Key == "A" && port.Name == "feedback" {
+				sourcePort = node.Y + port.Y
+			}
+			if node.Key == "B" && port.Name == "io" {
+				targetPort = node.Y + port.Y
+			}
+		}
+	}
+	first, last := edge.Points[0], edge.Points[len(edge.Points)-1]
+	if first != [2]float64{270, sourcePort} || last != [2]float64{430, targetPort} || first == original {
+		t.Fatalf("wrong native port anchors: %v to %v, expected %g to %g", first, last, sourcePort, targetPort)
+	}
+	for i := 1; i < len(edge.Points); i++ {
+		a, b := edge.Points[i-1], edge.Points[i]
+		if a[0] != b[0] && a[1] != b[1] {
+			t.Fatalf("non-orthogonal port path: %v", edge.Points)
+		}
+	}
+	if v.Edges[0].Points[0] != original {
+		t.Fatal("rendering changed the stored layout")
+	}
+	exported, err := Render(source, v)
+	if err != nil || string(exported) != scene.SVG {
+		t.Fatal("browser and exported routes differ", err)
+	}
+}

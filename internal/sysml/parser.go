@@ -319,13 +319,19 @@ func (p *parser) parseDeclaration(parentID string) {
 		p.next() // package
 		p.parsePackage(parentID, startTok, pendingDoc, pendingSpan, pendingDecl)
 		return
-	case "connection":
-		p.next() // connection
+	case "connection", "connect":
+		if keyword == "connection" {
+			p.next()
+		}
 		p.parseConnection(parentID, startTok, pendingDoc, pendingSpan, pendingDecl)
 		return
 	case "satisfy":
 		p.next() // satisfy
 		p.parseSatisfy(parentID, startTok)
+		return
+	case "flow":
+		p.next()
+		p.parseFlow(parentID, startTok)
 		return
 	case "dependency":
 		p.next()
@@ -463,7 +469,10 @@ func (p *parser) parseNamed(parentID string, startTok Token, kind, direction, do
 				p.diag(SeverityError, "Expected a type after 'specializes'", p.cur(), e.ID)
 			}
 			_ = span
-		case t.Kind == TokIdent && (t.Text == "redefines" || t.Text == "subsets" || t.Text == "references" || t.Text == "crosses"):
+		case t.Text == ":>>" || (t.Kind == TokIdent && t.Text == "redefines"):
+			p.next()
+			e.Redefines, e.RedefinitionSpan = p.readPath()
+		case t.Kind == TokIdent && (t.Text == "subsets" || t.Text == "references" || t.Text == "crosses"):
 			p.next()
 			_, _ = p.readPath()
 		case t.Text == "[":
@@ -578,7 +587,7 @@ func (p *parser) parseConnection(parentID string, startTok Token, doc string, do
 	shortName := p.shortName()
 	name := ""
 	nameSpan := Span{}
-	if p.cur().Kind == TokIdent && p.cur().Text != "connect" {
+	if p.cur().Kind == TokIdent && !p.isIdent("connect") {
 		t := p.next()
 		name = t.Text
 		nameSpan = Span{Start: t.Start, End: t.End}
@@ -589,11 +598,16 @@ func (p *parser) parseConnection(parentID string, startTok Token, doc string, do
 		return
 	}
 	p.next()
+	if t := p.cur(); t.Kind == TokPunct && t.Text == "(" {
+		p.unsupported(startTok, "parenthesized connection ends are not projected")
+		p.skipDeclaration()
+		return
+	}
 	source := ""
 	sourceSpan := Span{}
 	for {
 		t := p.cur()
-		if t.Kind == TokEOF || t.Text == ";" || t.Text == "{" || t.Text == "}" || (t.Kind == TokIdent && t.Text == "to") {
+		if t.Kind == TokEOF || !t.Quoted && (t.Text == ";" || t.Text == "{" || t.Text == "}" || t.Kind == TokIdent && t.Text == "to") {
 			break
 		}
 		if sourceSpan.Start == 0 && sourceSpan.End == 0 {
@@ -613,7 +627,7 @@ func (p *parser) parseConnection(parentID string, startTok Token, doc string, do
 	targetSpan := Span{}
 	for {
 		t := p.cur()
-		if t.Kind == TokEOF || t.Text == ";" || t.Text == "{" || t.Text == "}" {
+		if t.Kind == TokEOF || !t.Quoted && (t.Text == ";" || t.Text == "{" || t.Text == "}") {
 			break
 		}
 		if targetSpan.Start == 0 && targetSpan.End == 0 {
@@ -747,6 +761,14 @@ func qnameOf(parent *Element, name string) string {
 // semantic resolves references and records non-fatal diagnostics.
 func (p *parser) semantic() {
 	m := p.model
+	// Redefinitions retain their own usage identity and inherit feature types.
+	for _, e := range m.Elements {
+		if e.Redefines != "" {
+			if target := p.resolveRef(m.ByID[e.ParentID], e.Redefines); target != nil {
+				e.RedefinedID = target.ID
+			}
+		}
+	}
 	// Resolve declared types first (connections/satisfies need TypeID).
 	for _, e := range m.Elements {
 		if e.Kind == "root" {
@@ -768,7 +790,7 @@ func (p *parser) semantic() {
 
 	for _, e := range m.Elements {
 		switch e.Kind {
-		case "connection":
+		case "connection", "flow":
 			scope := m.ByID[e.ParentID]
 			src, srcTop := p.resolveFeature(scope, e.Source)
 			dst, dstTop := p.resolveFeature(scope, e.Target)
@@ -887,7 +909,7 @@ func (p *parser) findInType(cur *Element, name string) *Element {
 			return nil
 		}
 		seen[e.ID] = true
-		for _, ref := range []string{e.TypeID, e.SpecializesID} {
+		for _, ref := range []string{e.TypeID, e.SpecializesID, e.RedefinedID} {
 			if ref == "" {
 				continue
 			}

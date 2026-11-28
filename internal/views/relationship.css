@@ -1,0 +1,34 @@
+.diagram-relationship .relationship-line {
+  fill: none;
+  stroke: var(--relationship-stroke, #627581);
+  stroke-width: 1.5;
+}
+.diagram-relationship[data-kind="dependency"] .relationship-line {
+  stroke-dasharray: 6 4;
+  marker-end: var(--dependency-end);
+}
+.diagram-relationship[data-kind="flow"] .relationship-line {
+  marker-end: var(--flow-end);
+}
+.diagram-relationship[data-kind="containment"] .relationship-line {
+  marker-start: var(--ownership-start);
+}
+.diagram-relationship .relationship-arrow { fill: var(--relationship-stroke, #627581); }
+.diagram-relationship .relationship-open-arrow,
+.diagram-relationship .relationship-ownership {
+  fill: none;
+  stroke: var(--relationship-stroke, #627581);
+  stroke-width: 1;
+}
+.diagram-relationship .relationship-ownership {
+  fill: var(--relationship-label-background, #fff);
+}
+.diagram-relationship .relationship-label {
+  font: 11px Arial, sans-serif;
+  text-anchor: middle;
+  fill: var(--relationship-label, #1f2937);
+  paint-order: stroke;
+  stroke: var(--relationship-label-background, #fff);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}

@@ -7,7 +7,7 @@ import (
 )
 
 func TestInvertedPendulumProjection(t *testing.T) {
-	data, err := os.ReadFile("../../examples/inverted-pendulum/InvertedPendulum.sysml")
+	data, err := os.ReadFile("../../examples/inverted-pendulum/models/InvertedPendulum.sysml")
 	if err != nil {
 		t.Fatal(err)
 	}

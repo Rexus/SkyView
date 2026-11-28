@@ -187,26 +187,91 @@ func Lex(src string) []Token {
 
 func isComment(t Token) bool { return t.Kind == TokComment && strings.HasPrefix(t.Text, "/*") }
 
-// DocText extracts readable documentation text from a block comment.
+// DocText removes the block-comment framing while preserving the Markdown.
 func DocText(comment string) string {
-	s := comment
-	if strings.HasPrefix(s, "/*") {
-		s = s[2:]
+	body := strings.TrimSuffix(strings.TrimPrefix(comment, "/*"), "*/")
+	boxed := strings.HasPrefix(comment, "/**")
+	if boxed {
+		body = strings.TrimPrefix(body, "*")
 	}
-	if strings.HasSuffix(s, "*/") {
-		s = s[:len(s)-2]
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	if len(lines) == 1 {
+		return strings.Trim(lines[0], " \t")
 	}
-	lines := strings.Split(s, "\n")
-	for i, ln := range lines {
-		ln = strings.TrimSpace(ln)
-		ln = strings.TrimPrefix(ln, "*")
-		lines[i] = strings.TrimSpace(ln)
+	closingIndent := lines[len(lines)-1]
+	standaloneClose := strings.TrimSpace(closingIndent) == ""
+	inline := strings.TrimSpace(lines[0]) != ""
+	if inline {
+		lines[0] = strings.TrimLeft(lines[0], " \t")
 	}
-	// Drop leading/trailing empty lines.
-	for len(lines) > 0 && lines[0] == "" {
+	if standaloneClose {
+		lines = lines[:len(lines)-1]
+	} else {
+		lines[len(lines)-1] = strings.TrimRight(lines[len(lines)-1], " \t")
+	}
+	// Earlier SkyView saves prefixed each line with an aligned decorative star.
+	// Require that framing on every nonblank continuation line.
+	first := 0
+	if inline {
+		first = 1
+	}
+	stars := boxed || (!inline && standaloneClose)
+	prefix := closingIndent + " *"
+	for _, line := range lines[first:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if boxed {
+			stars = strings.HasPrefix(strings.TrimLeft(line, " \t"), "*")
+		} else {
+			stars = strings.HasPrefix(line, prefix+" ") || line == prefix
+		}
+		if !stars {
+			break
+		}
+	}
+	if stars {
+		for i := first; i < len(lines); i++ {
+			line := strings.TrimLeft(lines[i], " \t")
+			lines[i] = strings.TrimPrefix(strings.TrimPrefix(line, "*"), " ")
+		}
+	} else {
+		indent := commonDocIndent(lines[first:])
+		framing := closingIndent + "    "
+		if standaloneClose && strings.HasPrefix(indent, framing) {
+			indent = framing
+		}
+		for i := first; i < len(lines); i++ {
+			lines[i] = strings.TrimPrefix(lines[i], indent)
+		}
+	}
+	return trimDocLines(strings.Join(lines, "\n"))
+}
+
+func commonDocIndent(lines []string) string {
+	prefix := ""
+	found := false
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		if !found {
+			prefix, found = indent, true
+		}
+		for !strings.HasPrefix(indent, prefix) {
+			prefix = prefix[:len(prefix)-1]
+		}
+	}
+	return prefix
+}
+
+func trimDocLines(doc string) string {
+	lines := strings.Split(strings.ReplaceAll(doc, "\r\n", "\n"), "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
 		lines = lines[1:]
 	}
-	for len(lines) > 0 && lines[len(lines)-1] == "" {
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
 	return strings.Join(lines, "\n")

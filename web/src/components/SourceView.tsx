@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { linter, lintGutter, lintKeymap, setDiagnostics } from '@codemirror/lint'
 import { clearEditedDiagnostics, editorDiagnostics, editorLocation, normalizeSource } from '../sourceDiagnostics'
-import { EditorView, keymap } from '@codemirror/view'
+import { Decoration, EditorView, keymap, type DecorationSet, type ViewUpdate } from '@codemirror/view'
+import { StateEffect, StateField } from '@codemirror/state'
+import type { Diagnostic as EditorDiagnostic } from '@codemirror/lint'
+import DiagnosticOverview from './DiagnosticOverview'
+import { declarationAt, sourceDeclarations } from '../sourceNavigation'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import {
@@ -17,16 +21,19 @@ import {
   TriangleAlert,
   XCircle,
 } from 'lucide-react'
-import type { Diagnostic, FileResponse } from '../types'
+import type { Diagnostic, FileResponse, NativeValidation } from '../types'
 import { cx, plural } from '../utils'
 
 interface Props {
   file: FileResponse
+  linkedElement?: { id: string } | null
+  onCaretElement?: (id: string | null) => void
   jumpLine: number | null
   jumpNonce: number
   saving: boolean
   onSave: (content: string) => Promise<void>
   onValidate: (content: string) => Promise<Diagnostic[]>
+  onNativeValidate?: (content: string) => Promise<NativeValidation>
   onDirtyChange: (dirty: boolean) => void
   onOpenHistory: () => void
   onDownload: () => void
@@ -136,13 +143,33 @@ const cmTheme = EditorView.theme(
   { dark: false },
 )
 
+const linkDeclaration = StateEffect.define<{ from: number; to: number } | null>()
+const linkedRange = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, transaction) {
+    if (transaction.docChanged || transaction.selection) value = Decoration.none
+    for (const effect of transaction.effects) {
+      if (!effect.is(linkDeclaration)) continue
+      value = effect.value
+        ? Decoration.set([Decoration.mark({ class: 'cm-linked-declaration' }).range(effect.value.from, effect.value.to)])
+        : Decoration.none
+    }
+    return value
+  },
+  provide: field => EditorView.decorations.from(field),
+})
+const emptyDiagnostics: Diagnostic[] = []
+
 export default function SourceView({
   file,
+  linkedElement,
+  onCaretElement,
   jumpLine,
   jumpNonce,
   saving,
   onSave,
   onValidate,
+  onNativeValidate,
   onDirtyChange,
   onOpenHistory,
   onDownload,
@@ -153,13 +180,53 @@ export default function SourceView({
   const [checked, setChecked] = useState<{ source: string; diagnostics: Diagnostic[] } | null>(null)
   const [validationError, setValidationError] = useState('')
   const [validationEpoch, setValidationEpoch] = useState(0)
+  const [native, setNative] = useState<{ source: string; result: NativeValidation } | null>(null)
+  const [nativeBusy, setNativeBusy] = useState(false)
+  const [nativeError, setNativeError] = useState('')
+  const nativeGeneration = useRef(0)
+  useEffect(() => {
+    nativeGeneration.current++
+    setNative(null)
+    setNativeError('')
+    setNativeBusy(false)
+    return () => { nativeGeneration.current++ }
+  }, [draft, file.name, file.revision])
+  const nativeCheck = async () => {
+    if (!onNativeValidate) return
+    const generation = ++nativeGeneration.current
+    const source = draftRef.current
+    setNative(null)
+    setNativeError('')
+    setNativeBusy(true)
+    try {
+      const result = await onNativeValidate(source)
+      if (generation === nativeGeneration.current && source === draftRef.current) setNative({ source, result })
+    } catch (err) {
+      if (generation === nativeGeneration.current) setNativeError(err instanceof Error ? err.message : String(err))
+    } finally {
+      if (generation === nativeGeneration.current) setNativeBusy(false)
+    }
+  }
   const validateRef = useRef(onValidate)
   const manualValidation = useRef(false)
   validateRef.current = onValidate
   const viewRef = useRef<EditorView | null>(null)
+  const [editor, setEditor] = useState<EditorView | null>(null)
+  const [overviewGeometry, setOverviewGeometry] = useState(0)
+  const declarations = useMemo(() => sourceDeclarations(file), [file])
+  const savedSource = useMemo(() => normalizeSource(file.content), [file.content])
+  const follows = Boolean(onCaretElement)
   const dirtyRef = useRef(dirty)
   const draftRef = useRef(draft)
   const saveRef = useRef<() => void>(() => {})
+  const navigation = useRef({ savedSource, declarations, onCaretElement })
+  navigation.current = { savedSource, declarations, onCaretElement }
+  const handleEditorUpdate = useCallback((update: ViewUpdate) => {
+    if (update.heightChanged) setOverviewGeometry(value => value + 1)
+    const link = navigation.current
+    if (!link.onCaretElement || !update.selectionSet || update.docChanged || draftRef.current !== link.savedSource) return
+    link.onCaretElement(declarationAt(link.declarations, update.state.selection.main.head))
+  }, [])
 
   dirtyRef.current = dirty
   draftRef.current = draft
@@ -202,22 +269,25 @@ export default function SourceView({
   }, [draft, validationEpoch])
 
   useEffect(() => {
-    const view = viewRef.current
-    if (view && checked?.source === view.state.doc.toString()) {
-      view.dispatch(setDiagnostics(view.state, editorDiagnostics(checked.source, checked.diagnostics)))
+    if (!editor) return
+    const selected = draft === savedSource ? declarations.find(item => item.id === linkedElement?.id)?.name : undefined
+    if (selected && selected.to <= editor.state.doc.length) {
+      editor.dispatch({ effects: [linkDeclaration.of(selected), EditorView.scrollIntoView(selected.from, { y: 'center' })] })
+    } else {
+      editor.dispatch({ effects: linkDeclaration.of(null) })
     }
-  }, [checked])
+  }, [editor, declarations, linkedElement, draft, savedSource])
 
   useEffect(() => {
-    if (!jumpLine || !viewRef.current) return
-    const view = viewRef.current
+    if (!jumpLine || !editor) return
+    const view = editor
     const line = view.state.doc.line(Math.max(1, Math.min(jumpLine, view.state.doc.lines)))
     view.dispatch({
       selection: { anchor: line.from },
       effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
     })
     view.focus()
-  }, [jumpLine, jumpNonce, file.name])
+  }, [jumpLine, jumpNonce, file.name, editor])
 
   const save = async () => {
     if (!dirty || saving) return
@@ -240,7 +310,7 @@ export default function SourceView({
       sysmlLanguage,
       syntaxHighlighting(highlightStyle),
       cmTheme,
-      EditorView.lineWrapping,
+      linkedRange,
       linter(null),
       lintGutter({ hoverTime: 300 }),
       clearEditedDiagnostics,
@@ -258,13 +328,23 @@ export default function SourceView({
     [],
   )
 
-  const diagnostics = checked?.source === draft ? checked.diagnostics : []
+  const diagnostics = checked?.source === draft ? checked.diagnostics : emptyDiagnostics
+  const activeNative = native?.source === draft ? native.result : null
+  const currentFileDiagnostics = useMemo(() =>
+    activeNative?.diagnostics.filter(issue => issue.file === file.name) ?? emptyDiagnostics,
+  [activeNative, file.name])
   const markers = useMemo(() => editorDiagnostics(draft, diagnostics), [draft, diagnostics])
+  const overviewMarkers = useMemo(() => currentFileDiagnostics.length
+    ? editorDiagnostics(draft, [...diagnostics, ...currentFileDiagnostics])
+    : markers, [draft, diagnostics, currentFileDiagnostics, markers])
+  useEffect(() => {
+    if (editor && editor.state.doc.toString() === draft) editor.dispatch(setDiagnostics(editor.state, overviewMarkers))
+  }, [editor, draft, overviewMarkers])
   const errors = diagnostics.filter((d) => d.severity === 'error').length
   const warnings = diagnostics.filter((d) => d.severity === 'warning').length
 
-  const jump = (index: number) => {
-    const view = viewRef.current, marker = markers[index]
+  const jump = (marker?: EditorDiagnostic) => {
+    const view = viewRef.current
     if (!view || !marker) return
     view.dispatch({
       selection: { anchor: marker.from, head: marker.to },
@@ -279,16 +359,16 @@ export default function SourceView({
         <span className="section-title">
           <Code2 size={13} /> Source
         </span>
-        <span className="badge badge-muted mono">{file.name}</span>
+        <span className="badge badge-muted mono source-file" title={file.name}>{file.name}</span>
         {dirty ? (
-          <span className="badge badge-warning">unsaved changes</span>
+          <span className="badge badge-warning source-draft-status">unsaved changes{follows ? " · diagram shows saved source" : ""}</span>
         ) : (
-          <span className="badge badge-success">
+          <span className="badge badge-success source-sync-status">
             <CheckCircle2 size={10} /> synced
           </span>
         )}
         <div className="grow" style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+        <span className="source-line-count" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
           {plural(draft.split('\n').length, 'line')}
         </span>
         <button className="btn btn-sm" onClick={onOpenHistory}>
@@ -298,7 +378,11 @@ export default function SourceView({
           <Download size={13} /> Download
         </button>
         <button className="btn btn-sm" onClick={validate}>
-          <Info size={13} /> {validating ? 'Checking…' : 'Validate'}
+          <Info size={13} /> {validating ? 'Checking…' : 'Quick check'}
+        </button>
+        <button className="btn btn-sm" onClick={() => void nativeCheck()} disabled={nativeBusy || !onNativeValidate}
+          title="Check the complete project and this draft with the pinned official SysML pilot">
+          <CheckCircle2 size={13} /> {nativeBusy ? 'Native check…' : 'Native check'}
         </button>
         <button
           className="btn btn-sm"
@@ -319,6 +403,8 @@ export default function SourceView({
         <CodeMirror
           value={draft}
           height="100%"
+          readOnly={saving}
+          onUpdate={handleEditorUpdate}
           theme="none"
           extensions={extensions}
           basicSetup={{
@@ -337,12 +423,43 @@ export default function SourceView({
           }}
           onCreateEditor={(view) => {
             viewRef.current = view
+            setEditor(view)
           }}
         />
+        <DiagnosticOverview editor={editor} diagnostics={overviewMarkers} geometry={overviewGeometry} onJump={jump} />
       </div>
 
       <div className="diag-panel">
-        <div className="diag-panel-head" role="status" aria-live="polite">
+        <div className="diag-panel-head" role="status" aria-live="polite" data-testid="native-status">
+          <Info size={13} />
+          <span>{nativeBusy ? 'Checking project with the official SysML pilot…'
+            : nativeError ? `Native check unavailable: ${nativeError}`
+            : native?.source === draft ? native.result.status === 'unavailable'
+              ? `Native check unavailable: ${native.result.error ?? 'Checker did not complete'}`
+              : `Official release ${native.result.release.release}: ${native.result.status === 'passed' ? 'passed' : 'issues found'} · ${plural(native.result.filesChecked, 'file')} in this snapshot${native.result.libraryDiagnostics?.length ? ` · ${plural(native.result.libraryDiagnostics.length, 'official library issue')}` : ''}`
+            : 'Native SysML validation: not checked for this draft.'}</span>
+          {native?.source === draft && native.result.status !== 'unavailable' &&
+            <span className="mono" title={`${native.result.release.releaseContents}. Snapshot ${native.result.sourceSHA256}`}>
+              {native.result.sourceSHA256.slice(0, 8)}
+            </span>}
+        </div>
+        {native?.source === draft && (native.result.libraryDiagnostics ?? []).map((d, i) => (
+          <div className="diag-item" key={`library-${i}`}>
+            <Info size={12} />
+            <span className="where">{d.file}:{d.line}</span>
+            <span>{d.message}</span><span className="badge badge-muted">Official library</span>
+          </div>
+        ))}
+        {native?.source === draft && native.result.diagnostics.map((d, i) => (
+          <button className="diag-item" key={`native-${i}`} type="button" disabled={d.file !== file.name}
+            onClick={() => jump(editorDiagnostics(draft, [d])[0])}>
+            <span className={`diag-icon ${d.severity}`}>{d.severity === 'error' ? <XCircle size={12} /> : <Info size={12} />}</span>
+            <span className="where">{d.file}:{d.line}</span>
+            <span>{d.message}</span>
+            <span className="badge badge-muted">{d.source || 'Official pilot'}</span>
+          </button>
+        ))}
+        <div className="diag-panel-head" role="status" aria-live="polite" data-testid="projection-status">
           {validationError || errors > 0 ? (
             <XCircle size={13} className="diag-icon error" />
           ) : warnings > 0 ? (
@@ -357,14 +474,14 @@ export default function SourceView({
               ? `Validation unavailable: ${validationError}`
               : diagnostics.length === 0
               ? 'No issues found by SkyView’s partial parser.'
-              : `${plural(errors, 'error')}, ${plural(warnings, 'warning')}`}
+              : `Quick check: ${plural(errors, 'error')}, ${plural(warnings, 'warning')}`}
           </span>
           {diagnostics.length > 0 && (
             <span style={{ marginLeft: 'auto', color: 'var(--text-dim)' }}>click a row to jump</span>
           )}
         </div>
         {diagnostics.map((d, i) => (
-          <button key={i} type="button" className="diag-item" onClick={() => jump(i)} title={markers[i]?.message}>
+          <button key={i} type="button" className="diag-item" onClick={() => jump(markers[i])} title={markers[i]?.message}>
             <span className={`diag-icon ${d.severity}`}>
               {d.severity === 'error' ? (
                 <XCircle size={12} />

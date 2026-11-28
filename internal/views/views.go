@@ -14,27 +14,40 @@ import (
 )
 
 type Config struct {
-	Version int    `json:"version"`
-	Views   []View `json:"views"`
+	Version int              `json:"version"`
+	Views   []View           `json:"views"`
+	Styles  map[string]Style `json:"styles,omitempty"`
 }
 type View struct {
-	ID      string  `json:"id"`
-	Title   string  `json:"title"`
-	Owner   string  `json:"owner"`
-	Subject string  `json:"subject"`
-	Width   float64 `json:"width"`
-	Height  float64 `json:"height"`
-	Nodes   []Node  `json:"nodes"`
-	Edges   []Edge  `json:"edges"`
+	Presentation bool             `json:"presentation,omitempty"`
+	Boundaries   []Boundary       `json:"boundaries,omitempty"`
+	Layout       *Arrangement     `json:"layout,omitempty"`
+	Styles       map[string]Style `json:"-"`
+	Palette      Palette          `json:"-"`
+	ID           string           `json:"id"`
+	Title        string           `json:"title"`
+	Owner        string           `json:"owner"`
+	Subject      string           `json:"subject"`
+	Width        float64          `json:"width"`
+	Height       float64          `json:"height"`
+	Nodes        []Node           `json:"nodes"`
+	Edges        []Edge           `json:"edges"`
 }
 type Node struct {
-	Element string  `json:"element"`
-	X       float64 `json:"x"`
-	Y       float64 `json:"y"`
-	Width   float64 `json:"width"`
-	Height  float64 `json:"height"`
+	Detail  bool         `json:"detail,omitempty"`
+	Parent  string       `json:"parent,omitempty"`
+	Style   string       `json:"style,omitempty"`
+	Shape   string       `json:"shape,omitempty"`
+	Labels  []Label      `json:"labels,omitempty"`
+	Layout  *Arrangement `json:"layout,omitempty"`
+	Element string       `json:"element"`
+	X       float64      `json:"x"`
+	Y       float64      `json:"y"`
+	Width   float64      `json:"width"`
+	Height  float64      `json:"height"`
 }
 type Edge struct {
+	Caption string       `json:"caption,omitempty"`
 	Element string       `json:"element"`
 	From    string       `json:"from"`
 	To      string       `json:"to"`
@@ -54,11 +67,19 @@ func Parse(data []byte) (*Config, error) {
 	if err := d.Decode(new(any)); err != io.EOF {
 		return nil, fmt.Errorf("expected exactly one JSON configuration")
 	}
-	if c.Version != 1 || len(c.Views) == 0 || len(c.Views) > 100 {
-		return nil, fmt.Errorf("expected version 1 and 1–100 selected views")
+	if (c.Version != 1 && c.Version != 2) || len(c.Views) == 0 || len(c.Views) > 100 {
+		return nil, fmt.Errorf("expected version 1 or 2 and 1–100 selected views")
 	}
 	ids := map[string]bool{}
-	for _, v := range c.Views {
+	for index := range c.Views {
+		c.Views[index].Styles = c.Styles
+		v := c.Views[index]
+		if !v.Presentation && v.hasPresentationSettings() {
+			return nil, fmt.Errorf("view %s must enable presentation for boundary/layout/style settings", v.ID)
+		}
+		if c.Version == 1 && (v.Presentation || len(c.Styles) > 0 || len(v.Boundaries) > 0) {
+			return nil, fmt.Errorf("presentation settings require version 2")
+		}
 		if !identifier.MatchString(v.ID) || ids[v.ID] {
 			return nil, fmt.Errorf("invalid or duplicate view ID %q", v.ID)
 		}
@@ -93,6 +114,9 @@ func (c *Config) Find(id string) (View, error) {
 // Validate rejects invented/reversed relationships and unsupported selections. Parser
 // diagnostics elsewhere in the preserved document remain distinct from this scoped check.
 func (v View) Validate(m *sysml.Model) error {
+	if v.Presentation {
+		return v.validatePresentation(m)
+	}
 	if _, err := m.Select(v.Subject); err != nil {
 		return err
 	}

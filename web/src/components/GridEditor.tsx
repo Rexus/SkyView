@@ -26,7 +26,7 @@ interface Props {
   model: SysmlModel
   selectedId: string | null
   onSelect: (id: string) => void
-  onPatch: (id: string, patch: ElementPatch) => Promise<void>
+  onPatch: (id: string, patch: ElementPatch) => Promise<boolean | void>
   onDelete: (id: string) => void
   onShowInSource: (line: number) => void
   onAddElement: (parent?: string) => void
@@ -190,7 +190,7 @@ function GridRow({
   model: SysmlModel
   selected: boolean
   onSelect: (id: string) => void
-  onPatch: (id: string, patch: ElementPatch) => Promise<void>
+  onPatch: (id: string, patch: ElementPatch) => Promise<boolean | void>
   onDelete: (id: string) => void
   onShowInSource: (line: number) => void
 }) {
@@ -318,7 +318,7 @@ function EditableCell({
   className?: string
   placeholder?: string
   multiline?: boolean
-  onCommit: (value: string) => Promise<void>
+  onCommit: (value: string) => Promise<boolean | void>
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)

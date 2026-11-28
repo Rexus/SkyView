@@ -156,7 +156,7 @@ func SetDoc(src string, m *Model, id, doc string) (string, error) {
 	if e.Implicit || e.Kind == "first" || e.Kind == "succession" || e.Kind == "verify" || e.Kind == "entry" || e.Kind == "dependency" {
 		return "", fmt.Errorf("edit this behavior declaration in source")
 	}
-	doc = strings.TrimSpace(strings.ReplaceAll(doc, "\r\n", "\n"))
+	doc = trimDocLines(doc)
 	if strings.Contains(doc, "*/") {
 		return "", fmt.Errorf("documentation may not contain '*/'")
 	}
@@ -187,7 +187,7 @@ func SetDoc(src string, m *Model, id, doc string) (string, error) {
 }
 
 func formatDocComment(doc, indent string) string {
-	if !strings.Contains(doc, "\n") {
+	if !strings.Contains(doc, "\n") && strings.TrimSpace(doc) == doc {
 		return "/* " + doc + " */"
 	}
 	lines := strings.Split(doc, "\n")
@@ -195,8 +195,8 @@ func formatDocComment(doc, indent string) string {
 	b.WriteString("/*\n")
 	for _, ln := range lines {
 		b.WriteString(indent)
-		b.WriteString(" * ")
-		b.WriteString(strings.TrimSpace(ln))
+		b.WriteString("    ")
+		b.WriteString(ln)
 		b.WriteString("\n")
 	}
 	b.WriteString(indent)
@@ -246,7 +246,7 @@ func AddElement(src string, m *Model, parentID, kind string, isDef bool, name, t
 	if typ != "" && !typeRe.MatchString(typ) {
 		return "", fmt.Errorf("invalid type %q", typ)
 	}
-	doc = strings.TrimSpace(doc)
+	doc = trimDocLines(doc)
 	if strings.Contains(doc, "*/") {
 		return "", fmt.Errorf("documentation may not contain '*/'")
 	}
@@ -303,7 +303,7 @@ func AddConnection(src string, m *Model, parentID, name, source, target string) 
 	if !identRe.MatchString(name) {
 		return "", fmt.Errorf("invalid connection name %q", name)
 	}
-	if !pathRe.MatchString(source) || !pathRe.MatchString(target) {
+	if !validConnectionPath(source) || !validConnectionPath(target) {
 		return "", fmt.Errorf("invalid connection endpoint path")
 	}
 	parentIndent := lineIndentAt(src, parent.Spans.Decl.Start)

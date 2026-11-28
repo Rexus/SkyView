@@ -10,7 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "0.1.0";
+        version = pkgs.lib.removePrefix "v" (pkgs.lib.removeSuffix "\n" (builtins.readFile ./.version));
 
         # Frontend: build the Vite/React app into internal/server/dist.
         frontend = pkgs.buildNpmPackage {
@@ -18,7 +18,8 @@
           inherit version;
           src = ./web;
           nodejs = pkgs.nodejs_22;
-          npmDepsHash = "sha256-luJ3ltnBBHc5PHy6V0MpMwwQ91vFRL1YGlTDhtdyFnA=";
+          npmDeps = pkgs.importNpmLock { npmRoot = ./web; };
+          npmConfigHook = pkgs.importNpmLock.npmConfigHook;
           buildPhase = ''
             runHook preBuild
             npm run build -- --outDir dist
@@ -52,12 +53,15 @@
             gopls
             gotools
             nodejs_22
+            jdk21
             typescript
             typescript-language-server
             git
             curl
             jq
             skopeo
+            skaffold
+            kubectl
             gnumake
           ];
 
@@ -68,7 +72,7 @@
             echo ""
             echo "  make dev-api  # Go API + built UI on :8080"
             echo "  make dev-web  # Vite dev server on :5173"
-            echo "  make build    # single binary with embedded UI"
+            echo "  make build    # app and matching local SysML checker"
             echo ""
           '';
         };

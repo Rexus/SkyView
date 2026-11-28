@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@xyflow/react/dist/style.css'
 import './styles.css'
+import './workbench.css'
+import './diagramCursors.css'
 import App from './App'
 
 createRoot(document.getElementById('root')!).render(

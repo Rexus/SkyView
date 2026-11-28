@@ -8,6 +8,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import ElementDocumentation from './ElementDocumentation'
 import type { ElementPatch } from '../api'
 import type { SysmlElement, SysmlModel } from '../types'
 import {
@@ -20,7 +21,7 @@ import {
   shortKind,
   satisfiesFor,
   editCapabilities,
-  requiredConstraints,
+  requirementConstraints,
   verificationCasesFor,
 } from '../utils'
 
@@ -28,7 +29,7 @@ interface Props {
   model: SysmlModel
   element: SysmlElement
   onClose: () => void
-  onPatch: (id: string, patch: ElementPatch) => Promise<void>
+  onPatch: (id: string, patch: ElementPatch) => Promise<boolean | void>
   onDelete: (id: string) => void
   onShowInSource: (line: number) => void
   onSelect: (id: string) => void
@@ -62,7 +63,7 @@ export default function Inspector({
   const isRequirement = element.kind === 'requirement'
   const capabilities = editCapabilities(element)
   const { name: canName, type: canType, value: canValue, doc: canDoc } = capabilities
-  const constraints = isRequirement ? requiredConstraints(model, element) : []
+  const constraints = isRequirement ? requirementConstraints(model, element) : []
   const verifications = isRequirement ? verificationCasesFor(model, element) : []
   const hasEndpoints = ['connection', 'dependency', 'message', 'succession', 'first'].includes(element.kind)
   const diagCount = diagnosticsFor(model, element.id)
@@ -105,7 +106,6 @@ export default function Inspector({
             background: kindColor(element),
             marginTop: 5,
             flex: '0 0 auto',
-            boxShadow: `0 0 10px ${kindColor(element)}66`,
           }}
         />
         <div className="inspector-title">
@@ -222,17 +222,8 @@ export default function Inspector({
           </label>
         )}
 
-        {canDoc && (
-          <label className="field">
-            <span className="field-label">Documentation</span>
-            <textarea
-              className="textarea"
-              value={doc}
-              onChange={(e) => setDoc(e.target.value)}
-              placeholder="What is this element and why does it exist?"
-              rows={5}
-            />
-          </label>
+        {(canDoc || element.doc) && (
+          <ElementDocumentation key={element.id} value={doc} onChange={canDoc ? setDoc : undefined} />
         )}
 
         {isRequirement && element.docResolved && element.docResolved !== element.doc && (

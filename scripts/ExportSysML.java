@@ -14,7 +14,7 @@ public class ExportSysML {
         var source = Files.readString(Path.of(args[1])).replace("\r\n", "\n").replace("\r", "\n");
         var result = engine.process(source);
         System.err.println(result);
-        if (result.hasErrors()) System.exit(1);
+        if (result.getException() != null || result.hasErrors()) System.exit(1);
         var exported = engine.export(args[2], List.of());
         if (!(exported instanceof com.google.gson.JsonElement json)) {
             throw new IllegalStateException("Native export failed: " + exported);

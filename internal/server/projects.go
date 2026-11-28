@@ -9,6 +9,7 @@ import (
 
 	"github.com/Rexus/SkyView/examples"
 	"github.com/Rexus/SkyView/internal/projects"
+	"github.com/Rexus/SkyView/internal/views"
 )
 
 type localProject struct {
@@ -65,17 +66,29 @@ func (s *Server) project(id string) (*Server, projects.Info, error) {
 	}
 	child := s.projectServers[id]
 	if child == nil {
-		child = &Server{workspace: root, recursive: true}
+		child = &Server{workspace: root, recursive: true, native: s.native}
 		s.projectServers[id] = child
 	}
 	return child, info, nil
 }
 func (s *Server) registerProjectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects", s.handleProjects)
+	mux.HandleFunc("POST /api/workspaces", s.handleCreateWorkspace)
+	mux.HandleFunc("PATCH /api/projects/{project}/workspace", s.handleMoveProject)
 	mux.HandleFunc("POST /api/projects", s.handleCreateProject)
 	mux.HandleFunc("POST /api/projects/upload", s.handleUploadProject)
 	mux.HandleFunc("POST /api/projects/git", s.handleGitProject)
 	mux.HandleFunc("GET /api/projects/{project}/export", s.handleExportProject)
+	for _, method := range []string{"GET", "PUT"} {
+		mux.HandleFunc(method+" /api/projects/{project}/palette", func(w http.ResponseWriter, r *http.Request) {
+			project, _, err := s.project(r.PathValue("project"))
+			if err != nil {
+				writeError(w, 404, err.Error(), nil)
+				return
+			}
+			project.handlePalette(w, r)
+		})
+	}
 	mux.HandleFunc("GET /api/examples", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"examples": examples.List()})
 	})
@@ -92,11 +105,25 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		list = append(list, local.info)
 	}
 	list = append(list, projects.Info{ID: "workspace", Manifest: projects.Manifest{Version: 1, Name: "Workspace files", Origin: projects.Origin{Kind: "legacy"}}})
-	writeJSON(w, 200, map[string]any{"projects": list})
+	workspaces, err := s.listWorkspaces()
+	if err != nil {
+		writeError(w, 500, err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"projects": list, "workspaces": workspaces})
 }
 func (s *Server) publishProject(w http.ResponseWriter, manifest projects.Manifest, files map[string][]byte) {
 	s.catalogMu.Lock()
 	defer s.catalogMu.Unlock()
+	if !s.checkWorkspace(w, manifest.WorkspaceID) {
+		return
+	}
+	if raw, exists := files[views.PaletteName]; exists {
+		if _, err := views.ParsePalette(raw); err != nil {
+			writeError(w, 400, err.Error(), nil)
+			return
+		}
+	}
 	info, err := projects.Create(s.projectRoot(), manifest, files)
 	if err != nil {
 		writeError(w, 400, err.Error(), nil)
@@ -106,8 +133,9 @@ func (s *Server) publishProject(w http.ResponseWriter, manifest projects.Manifes
 }
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Name    string `json:"name"`
-		Example string `json:"example"`
+		Name        string `json:"name"`
+		Example     string `json:"example"`
+		WorkspaceID string `json:"workspaceId"`
 	}
 	if err := decodeJSON(r, &request); err != nil {
 		writeError(w, 400, err.Error(), nil)
@@ -124,7 +152,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 		origin = projects.Origin{Kind: "example", Example: request.Example}
 	}
-	s.publishProject(w, projects.Manifest{Name: request.Name, Origin: origin}, files)
+	s.publishProject(w, projects.Manifest{Name: request.Name, Origin: origin, WorkspaceID: request.WorkspaceID}, files)
 }
 func (s *Server) handleUploadProject(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, projects.MaxArchive+(1<<20))
@@ -149,7 +177,7 @@ func (s *Server) handleUploadProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error(), nil)
 		return
 	}
-	manifest := projects.Manifest{Name: r.FormValue("name"), Origin: projects.Origin{Kind: "upload", Directory: r.FormValue("directory")}}
+	manifest := projects.Manifest{Name: r.FormValue("name"), WorkspaceID: r.FormValue("workspaceId"), Origin: projects.Origin{Kind: "upload", Directory: r.FormValue("directory")}}
 	if raw, exists := files[projects.ManifestName]; exists {
 		var previous projects.Manifest
 		if len(raw) > 16<<10 || json.Unmarshal(raw, &previous) != nil || previous.Version != 1 {
@@ -165,17 +193,26 @@ func (s *Server) handleUploadProject(w http.ResponseWriter, r *http.Request) {
 	s.publishProject(w, manifest, files)
 }
 func (s *Server) handleGitProject(w http.ResponseWriter, r *http.Request) {
-	var request projects.GitRequest
+	var request struct {
+		projects.GitRequest
+		WorkspaceID string `json:"workspaceId"`
+	}
 	if err := decodeJSON(r, &request); err != nil {
 		writeError(w, 400, err.Error(), nil)
 		return
 	}
-	files, origin, err := projects.FetchSnapshot(r.Context(), projects.SnapshotClient(), request)
+	s.catalogMu.Lock()
+	validWorkspace := s.checkWorkspace(w, request.WorkspaceID)
+	s.catalogMu.Unlock()
+	if !validWorkspace {
+		return
+	}
+	files, origin, err := projects.FetchSnapshot(r.Context(), projects.SnapshotClient(), request.GitRequest)
 	if err != nil {
 		writeError(w, 400, err.Error(), nil)
 		return
 	}
-	s.publishProject(w, projects.Manifest{Name: request.Name, Origin: origin}, files)
+	s.publishProject(w, projects.Manifest{Name: request.Name, Origin: origin, WorkspaceID: request.WorkspaceID}, files)
 }
 func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 	project, info, err := s.project(r.PathValue("project"))

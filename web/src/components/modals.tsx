@@ -811,6 +811,7 @@ export function HistoryModal({
 export function HelpModal({ onClose }: { onClose: () => void }) {
   const rows = [
     ['⌘K / Ctrl+K', 'Open the command palette'],
+    ['⌘B / Ctrl+B', 'Show or hide the left sidebar'],
     ['⌘S / Ctrl+S', 'Save the source editor'],
     ['⌘Z / Ctrl+Z', 'Undo the last visual model edit'],
     ['⇧⌘Z / Ctrl+Y', 'Redo the last visual model edit'],

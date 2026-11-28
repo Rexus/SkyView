@@ -1,6 +1,7 @@
 export type Severity = 'error' | 'warning' | 'info'
 
 export interface Diagnostic {
+  source?: string
   range?: Span // Half-open UTF-8 byte offsets in the validated source.
   hint?: string
   severity: Severity
@@ -74,6 +75,7 @@ export interface SysmlModel {
 }
 
 export interface FileResponse {
+  addedElementId?: string
   name: string
   content: string
   model: SysmlModel
@@ -87,7 +89,7 @@ export interface FileInfo {
   modified: string
 }
 
-export type Tab = 'grid' | 'diagram' | 'requirements' | 'source' | 'shared'
+export type Tab = 'grid' | 'diagram' | 'requirements' | 'source' | 'split'
 export type DiagramMode = 'interconnection' | 'containment'
 
 export interface LayoutNode {
@@ -119,4 +121,14 @@ export interface Toast {
   id: number
   kind: 'success' | 'error' | 'info'
   message: string
+}
+
+export interface NativeValidation {
+  status: 'passed' | 'failed' | 'unavailable'
+  release: { release: string; specification: string; releaseContents: string }
+  sourceSHA256: string
+  filesChecked: number
+  diagnostics: (Diagnostic & { file: string; code?: string })[]
+  libraryDiagnostics?: (Diagnostic & { file: string; code?: string; origin?: string })[]
+  error?: string
 }

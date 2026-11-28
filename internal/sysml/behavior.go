@@ -9,7 +9,7 @@ type endpoint struct {
 
 func isRelationship(e *Element) bool {
 	switch e.Kind {
-	case "connection", "dependency", "satisfy", "verify", "message", "succession", "first":
+	case "flow", "connection", "dependency", "satisfy", "verify", "message", "succession", "first":
 		return true
 	}
 	return false

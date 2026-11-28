@@ -37,7 +37,7 @@ export function editorDiagnostics(source: string, diagnostics: Diagnostic[]): Ma
       to = Math.min(source.length, from + (character !== undefined && character > 0xffff ? 2 : 1))
     }
     return {
-      from, to, severity: d.severity, source: 'SkyView',
+      from, to, severity: d.severity, source: d.source ?? 'SkyView projection',
       message: d.message + (d.hint ? `\n\nSuggested fix: ${d.hint}` : ''),
     }
   })

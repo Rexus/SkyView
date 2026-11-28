@@ -1,37 +1,29 @@
-import { useEffect, useRef, useState } from 'react'
 import {
-  CheckCircle2,
-  ChevronDown,
   CircleAlert,
   Command,
-  FileCode2,
-  FilePlus2,
-  History,
   Moon,
-  Plus,
+  PanelLeftClose,
+  PanelLeftOpen,
   Sun,
-  Trash2,
   TriangleAlert,
   CircleHelp,
-  Upload,
+  UserRound,
 } from 'lucide-react'
-import type { Diagnostic, FileInfo, FileResponse } from '../types'
-import { cx, formatBytes, formatTime } from '../utils'
+import type { Diagnostic } from '../types'
+import { cx } from '../utils'
 
 interface Props {
-  files: FileInfo[]
-  file: FileResponse | null
+  sidebarVisible: boolean
+  sidebarShortcut: string
+  onToggleSidebar: () => void
+  workspaceHost: (host: HTMLDivElement | null) => void
   saving: boolean
   sourceDirty: boolean
   theme: 'dark' | 'light'
+  account?: string
   diagnostics: Diagnostic[]
-  onOpenFile: (name: string) => void
-  onNewFile: () => void
-  onImport: () => void
-  onDeleteFile: () => void
   onToggleTheme: () => void
   onOpenPalette: () => void
-  onOpenHistory: () => void
   onOpenHelp: () => void
   onShowDiagnostics: () => void
 }
@@ -54,41 +46,34 @@ function BrandMark() {
 
 export default function Header(props: Props) {
   const {
-    files,
-    file,
+    sidebarVisible,
+    sidebarShortcut,
+    onToggleSidebar,
+    workspaceHost,
     saving,
     sourceDirty,
     theme,
+    account,
     diagnostics,
-    onOpenFile,
-    onNewFile,
-    onImport,
-    onDeleteFile,
     onToggleTheme,
     onOpenPalette,
-    onOpenHistory,
     onOpenHelp,
     onShowDiagnostics,
   } = props
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const onClick = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [menuOpen])
-
   const errors = diagnostics.filter((d) => d.severity === 'error').length
   const warnings = diagnostics.filter((d) => d.severity === 'warning').length
   const diagClass = errors ? 'has-errors' : warnings ? 'has-warnings' : ''
-  const saveLabel = saving ? 'Saving…' : sourceDirty ? 'Unsaved source' : 'Saved'
+  const sidebarLabel = sidebarVisible ? 'Hide sidebar' : 'Show sidebar'
+  const sidebarKeys = sidebarShortcut === 'Meta+B' ? 'Cmd+B' : 'Ctrl+B'
+  const saveLabel = saving ? 'Saving…' : sourceDirty ? 'Unsaved changes' : 'Saved'
 
   return (
     <header className="topbar">
+      <button id="sidebar-toggle" type="button" className="icon-button tooltip sidebar-toggle"
+        aria-label={sidebarLabel} aria-expanded={sidebarVisible} aria-controls="workbench-sidebar"
+        aria-keyshortcuts={sidebarShortcut} data-tip={sidebarLabel + ' (' + sidebarKeys + ')'} onClick={onToggleSidebar}>
+        {sidebarVisible ? <PanelLeftClose size={16} aria-hidden="true" /> : <PanelLeftOpen size={16} aria-hidden="true" />}
+      </button>
       <div className="brand">
         <div className="brand-mark">
           <BrandMark />
@@ -101,111 +86,34 @@ export default function Header(props: Props) {
 
       <div className="topbar-divider" />
 
-      <div className="file-switcher" ref={menuRef}>
-        <button className="file-button" onClick={() => setMenuOpen((v) => !v)}>
-          <FileCode2 size={15} style={{ color: 'var(--accent)' }} />
-          <span className="filename">{file?.name ?? 'No model'}</span>
-          <ChevronDown size={14} className="chevron" />
-        </button>
-        {menuOpen && (
-          <div className="file-menu">
-            <div className="file-menu-section">Workspace models</div>
-            {files.length === 0 && (
-              <div style={{ padding: '10px', color: 'var(--text-dim)', fontSize: 12 }}>
-                No .sysml files yet.
-              </div>
-            )}
-            {files.map((f) => (
-              <button
-                key={f.name}
-                className={cx('file-menu-item', f.name === file?.name && 'active')}
-                onClick={() => {
-                  onOpenFile(f.name)
-                  setMenuOpen(false)
-                }}
-              >
-                <FileCode2 size={14} />
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {f.name}
-                </span>
-                <span className="meta">{formatBytes(f.size)}</span>
-              </button>
-            ))}
-            <div className="file-menu-actions">
-              <button className="btn btn-sm" onClick={onNewFile}>
-                <FilePlus2 size={13} /> New
-              </button>
-              <button
-                className="btn btn-sm"
-                onClick={() => {
-                  onImport()
-                  setMenuOpen(false)
-                }}
-              >
-                <Upload size={13} /> Import
-              </button>
-              <button className="btn btn-sm btn-danger" onClick={onDeleteFile} disabled={!file}>
-                <Trash2 size={13} /> Delete
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <button className="icon-button tooltip" data-tip="New model file" onClick={onNewFile}>
-        <Plus size={16} />
-      </button>
-      <button className="icon-button tooltip" data-tip="Import .sysml from desktop" onClick={onImport}>
-        <Upload size={16} />
-      </button>
-      <button className="icon-button tooltip" data-tip="Version history" onClick={onOpenHistory}>
-        <History size={16} />
-      </button>
-
+      <div ref={workspaceHost} />
       <div className="topbar-spacer" />
 
       <div className="topbar-meta">
-        <span className="save-state">
+        {(saving || sourceDirty) && <span className="save-state" role="status">
           <span className={cx('save-dot', saving && 'saving', sourceDirty && !saving && 'dirty')} />
           {saveLabel}
-        </span>
+        </span>}
 
-        <button className={cx('diag-badge', diagClass)} onClick={onShowDiagnostics}>
-          {errors ? (
-            <CircleAlert size={13} />
-          ) : warnings ? (
-            <TriangleAlert size={13} />
-          ) : (
-            <CheckCircle2 size={13} />
-          )}
-          {errors || warnings ? (
-            <span>
-              {errors ? `${errors} error${errors === 1 ? '' : 's'}` : `${warnings} warning${warnings === 1 ? '' : 's'}`}
-            </span>
-          ) : (
-            <span>Model clean</span>
-          )}
-        </button>
+        {!!(errors || warnings) && <button className={cx('diag-badge', diagClass)} onClick={onShowDiagnostics}>
+          {errors ? <CircleAlert size={13} /> : <TriangleAlert size={13} />}
+          <span>{errors ? errors + (errors === 1 ? ' error' : ' errors') : warnings + (warnings === 1 ? ' warning' : ' warnings')}</span>
+        </button>}
 
         <button className="cmd-trigger" onClick={onOpenPalette}>
           <Command size={13} />
           <span>Search</span>
-          <span className="kbd">⌘K</span>
         </button>
 
-        <button className="icon-button tooltip" data-tip="Toggle theme" onClick={onToggleTheme}>
+        <button className="icon-button tooltip" data-tip="Toggle theme" aria-label="Toggle theme" onClick={onToggleTheme}>
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        <button className="icon-button tooltip" data-tip="Keyboard shortcuts" onClick={onOpenHelp}>
+        <button className="icon-button tooltip" data-tip="Keyboard shortcuts" aria-label="Keyboard shortcuts" onClick={onOpenHelp}>
           <CircleHelp size={16} />
         </button>
+        {account && <span className="header-account" title={'Current user: ' + account}>
+          <UserRound size={15} aria-hidden="true" /> <span>{account}</span>
+        </span>}
       </div>
     </header>
   )

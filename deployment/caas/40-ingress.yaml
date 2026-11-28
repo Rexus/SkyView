@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: skyview
+  namespace: skyview
+  labels:
+    app.kubernetes.io/name: skyview
+  annotations:
+    cert-manager.io/cluster-issuer: example-ca
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - skyview.example.com
+      secretName: skyview-tls
+  rules:
+    - host: skyview.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: skyview
+                port:
+                  number: 80

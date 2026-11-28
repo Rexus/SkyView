@@ -1,5 +1,7 @@
 # Inspection drone
 
-A bundled SkyView example project. Open its `.sysml` file in the model workbench.
+Open [the native model](models/InspectionDrone.sysml) or create a copy from **Projects → Examples**.
+The model covers connected subsystems, requirements, mission behavior and planned verification.
 
-Full guides and optional analysis tooling: [Rexus/SkyView documentation](https://github.com/Rexus/SkyView/tree/main/docs).
+The [example guide](../../docs/drone-example.md) explains the model and shows the mission sequence.
+The [sequence renderer](tools/render-sequence.py) uses an export from the official SysML pilot.

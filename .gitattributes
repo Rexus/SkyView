@@ -2,3 +2,7 @@
 *.sh text eol=lf
 Dockerfile text eol=lf
 Makefile text eol=lf
+.version text eol=lf
+
+# Keep the bundled upstream license formatting.
+internal/standards/licenses/PlantUML-EPL-1.0.html -whitespace

@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 import { JSDOM } from 'jsdom'
 
 test('project controls preserve drafts, expose import choices and scope every file request', async () => {
- const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/?project=project-a', pretendToBeVisual: true })
+ const dom = new JSDOM('<div id="top"></div><div id="root"></div>', { url: 'http://localhost/?project=project-a', pretendToBeVisual: true })
  const saved = new Map()
  for (const name of ['window','document','navigator','HTMLElement','Element','Node','location','FormData','File']) {
   saved.set(name,Object.getOwnPropertyDescriptor(globalThis,name))
@@ -17,8 +17,8 @@ test('project controls preserve drafts, expose import choices and scope every fi
  globalThis.IS_REACT_ACT_ENVIRONMENT=true
  globalThis.fetch=async (url,init={})=>{
   calls.push({url,init})
-  const data = url==='/api/projects' && init.method==='POST' ? {id:'project-new',name:'Drone',origin:{kind:'example'}} :
-   url==='/api/projects' ? {projects:[{id:'project-a',name:'Cart',origin:{kind:'upload'}},{id:'project-b',name:'Other',origin:{kind:'new'}}]} :
+  const data = url==='/api/projects' && init.method==='POST' ? {id:'project-new',name:'Drone',workspaceId:'workspace-design',origin:{kind:'example'}} :
+   url==='/api/projects' ? {workspaces:[{id:'default',name:'Default workspace'},{id:'workspace-design',name:'Design'}],projects:[{id:'project-a',name:'Cart',workspaceId:'workspace-design',origin:{kind:'upload'}},{id:'project-b',name:'Other',workspaceId:'workspace-design',origin:{kind:'new'}},{id:'workspace',name:'Workspace files',origin:{kind:'legacy'}}]} :
    url==='/api/examples' ? {examples:[{id:'inspection-drone',name:'Drone'}]} : {}
   if (url.endsWith('/export')) return {ok:false,json:async()=>({error:'Project exceeds export limits'})}
   return {ok:true,json:async()=>data,text:async()=>JSON.stringify(data)}
@@ -31,24 +31,30 @@ test('project controls preserve drafts, expose import choices and scope every fi
   const {createRoot}=await import('react-dom/client')
   const {default:ProjectBar}=await import(pathToFileURL(`${temp}/components/ProjectBar.mjs`).href)
   const host=document.querySelector('#root');root=createRoot(host)
-  await act(async()=>root.render(React.createElement(ProjectBar,{sourceDirty:true,saving:false})))
+  await act(async()=>root.render(React.createElement(ProjectBar,{sourceDirty:true,saving:false,workspaceHost:document.querySelector('#top')})))
+  assert.equal(document.querySelector('#top #active-workspace').value,'workspace-design','a direct older project link resolves its workspace')
+  assert.deepEqual([...host.querySelector('#active-project').options].map(option=>option.value),['project-a','project-b'],'the project list is scoped to the header selection')
+  await act(async()=>{const select=document.querySelector('#active-workspace');select.value='default';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}))})
+  assert.match(host.textContent,/Discard unsaved changes/,'switching workspaces protects the current draft')
+  await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent.trim()==='Cancel').click())
+  assert.equal(document.querySelector('#active-workspace').value,'workspace-design')
   assert.equal(host.querySelector('#active-project').value,'project-a')
   await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent.trim()==='Export project').click())
   assert.equal(calls.at(-1).url,'/api/projects/project-a/export')
   assert.match(host.querySelector('[role=alert]').textContent,/exceeds export limits/,'failed export stays in the editor')
   await act(async()=>{const select=host.querySelector('select');select.value='project-b';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}))})
-  assert.match(host.textContent,/Discard source edits/)
+  assert.match(host.textContent,/Discard unsaved changes/)
   const click=async text=>act(async()=>{
    const button=[...host.querySelectorAll('button')].find(b=>b.textContent.trim()===text)
    assert.ok(button,`missing ${text}`);button.click()
   })
   await click('Cancel')
   assert.equal(host.querySelector('#active-project').value,'project-a','cancel keeps current project')
-  await click('Projects')
+  await click('Add project')
   await click('Use example')
   const created=calls.find(c=>c.init.method==='POST')
-  assert.deepEqual(JSON.parse(created.init.body),{name:'Drone',example:'inspection-drone'})
-  assert.match(host.textContent,/Discard source edits/,'creating a project also protects drafts')
+  assert.deepEqual(JSON.parse(created.init.body),{name:'Drone',example:'inspection-drone',workspaceId:'workspace-design'})
+  assert.match(host.textContent,/Discard unsaved changes/,'creating a project also protects drafts')
   await click('Cancel')
   await click('Git snapshot')
   assert.match(host.textContent,/Branch, tag or commit/)
