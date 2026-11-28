@@ -16,7 +16,7 @@ SkyView's design, behavior and appearance. Builds use published standards by def
 
 [![SkyView in light mode displaying the inspection drone's connected subsystems](docs/images/skyview-drone.jpg)](docs/images/skyview-drone.jpg)
 
-_Captured 28 November 2026 · SkyView v0.2.0 development build · uncommitted changes based on [75c936f5c53f](https://github.com/Rexus/SkyView/commit/75c936f5c53f0c08c39a6fb37483ddbc99794a98)._
+_Captured 28 November 2026 · SkyView v0.2.0 development build · revision `8126f95ea2b7`._
 
 Explore the [inspection drone example](examples/inspection-drone/): connected subsystems, four requirements,
 mission behavior and planned verification checks. The native-valid model loads without diagnostics.
@@ -172,6 +172,9 @@ API and Services specification has not been established [3].
 SkyView began as an experiment created by Carl Maier with assistance from a locally hosted language model,
 inspired by a demonstration of SysON. Its continued development aims to combine approachable visual
 modeling with dependable SysML v2 support.
+
+We use AI assistance in ongoing development and documentation. Project maintainers review changes
+and run the project checks before releases.
 
 ## License
 

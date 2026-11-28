@@ -12,3 +12,12 @@ examples/inverted-pendulum/simulation/__pycache__/
 
 # CaaS account configuration
 accounts.json
+
+# Local AI assistant guidance
+AGENTS.md
+agents.md
+
+# Local Nix outputs
+/result
+/result-*
+/.direnv/
