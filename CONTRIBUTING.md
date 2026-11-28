@@ -9,10 +9,12 @@ Start from the current upstream `main` and make changes on a branch.
 - Repository collaborators with write access can create and push their branch in `Rexus/SkyView`.
 - Other contributors should fork `Rexus/SkyView` and push their branch to their fork.
 
-Open a pull request targeting `Rexus/SkyView:main`. Explain behavior changes and include the checks
-and evidence that apply. Wait for **Check and build** to pass before merging. GitHub requires a pull
-request to update `main` and blocks force pushes and deletion on that branch.
-A maintainer must approve the workflow run on a fork pull request from a first-time contributor.
+Open a pull request targeting `Rexus/SkyView:main`. Explain what changed and include the checks
+and evidence that apply. Keep discussions constructive and focused on the work.
+Before squash merging, update the branch from `main`, resolve review conversations and wait for
+all three **Check and build** jobs to pass (`check`, `pendulum` and `sysml`).
+GitHub blocks force pushes and deletion on `main`. A maintainer approves workflow runs for
+first-time fork contributors.
 
 Keep downloaded standards and generated local checker artifacts outside Git.
 
@@ -24,30 +26,33 @@ Follow the [drone screenshot steps](docs/drone-example.md#readme-screenshot).
 
 ## Report a bug
 
+Use the [security policy](SECURITY.md) for a suspected vulnerability.
+Use the [issue chooser](https://github.com/Rexus/SkyView/issues/new/choose) for an ordinary bug.
+
 Select the app version in the footer and choose **Copy build report**. Include it with the steps to reproduce,
 the expected result and a project ZIP or minimal model if you can share it. The report includes the build,
 deployment mode, SysML checker identity and selected model revision. Review any project data separately
 before attaching it. From a terminal use `skyview version -json` to identify the executable.
 
-## Cut a release from main
+## Version and release workflow
 
-1. Update the root `.version` in a pull request. Use a SemVer tag such as `v0.2.0`, `v0.2.0-beta.1` or
-   `v0.2.0-rc.1`. Prereleases use GitHub's prerelease flag. Leave SemVer build metadata out of the tag
-   so it can also serve as an OCI image tag.
-2. Merge the pull request, update your checkout of `main` and confirm that it contains that version.
-   Create an annotated, signed tag for that commit and push the tag. Register the signing key with
-   GitHub so the tag receives a verified signature.
-3. **SkyView release** verifies the signature, matches the tag to `.version`, and checks that the tagged
-   commit is in `main`. It runs the regular Go, web, simulation and native SysML checks before publishing.
-   The workflow publishes Linux and Windows amd64 archives and a Linux amd64 OCI image, with checksums
-   and signed GitHub build provenance. Release notes include the immutable image digest. The release
-   uses the committed SysML lock. The workflow leaves version changes to the pull request path.
+Choose a branch name that describes the expected release. A `codex/` prefix works with each rule.
 
-GitHub Container Registry may initially give the package private visibility. Set the linked
-`skyview` package to public after the first publication for anonymous image pulls.
-Use the release's digest when deploying and verify the archive or image with
-`gh attestation verify … -R Rexus/SkyView`. The app's **Official** label reflects embedded packaging
-metadata. Use artifact attestation to verify the publisher.
+| Branch example | Result from `v0.2.0` |
+| --- | --- |
+| `feature/split-view` or `codex/feat/split-view` | Minor release `v0.3.0` |
+| `fix/diagram-fit`, `bug/diagram-fit`, `bugfix/diagram-fit` or `hotfix/diagram-fit` | Patch release `v0.2.1` |
+| `v1.0` or `release/v1.0.0` | Exact release `v1.0.0` |
+| `release/v1.0.0-beta.1` | Exact prerelease `v1.0.0-beta.1` |
+
+With other branch names, a PR title starting with `feat:` or `fix:` selects a minor
+or patch release. Other merges leave the version alone. Exact versions must advance
+the version in `.version`. Leave that file for the release workflow to update.
+For a dependency fix that should ship as a patch release, use a `fix:` pull request title.
+
+After the PR merges into `main`, GitHub Actions updates `.version` and signs the version commit
+and tag. The tag starts the release checks and publication. Maintainers can follow the
+[release setup and recovery guide](docs/maintainer-releases.md).
 
 ## Build identity
 

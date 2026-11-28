@@ -4,8 +4,9 @@ import { addViewConnection, addViewElement, viewKeyFor, viewReference } from '..
 import { canPlaceElement, type DropPosition } from '../elementDrag'
 import { API_BASE } from '../api'
 import type { FileResponse } from '../types'
-import { boxKey, boxesOf, descendants, lockedParent } from '../sharedViews'
-import type { SharedView, ViewConfig } from '../sharedViews'
+import { boxKey, boxesOf, descendants, interiorLocked, lockedParent } from '../sharedViews'
+import type { Point, SharedView, ViewConfig } from '../sharedViews'
+import { canEditSavedConnector, editSavedConnector, moveSavedLabel } from '../savedDiagramRouting'
 import { autoLayout, moveBox } from '../sharedLayout'
 import DiagramCanvas from './DiagramCanvas'
 import type { DiagramScene } from '../diagramScene'
@@ -13,14 +14,20 @@ import { relativePosition, sceneNodeId } from '../diagramScene'
 import { useSavedDiagram } from '../useSavedDiagram'
 import { connectModelPorts, type AddDiagramConnection } from '../diagramConnections'
 import SharedSettings from './SharedSettings'
-import ActionMenu from './ActionMenu'
+import DiagramToolbar from './DiagramToolbar'
 import type { Connection, Node } from '@xyflow/react'
-import { Loader2, Save, Settings2, Wand2 } from 'lucide-react'
+import { Loader2, RotateCcw, Save } from 'lucide-react'
 import { useModelViews, type ModelViews } from '../modelViews'
-import { discardLayouts, layoutDirty, type LayoutDraft } from '../diagramTabs'
+import { discardLayouts, type LayoutDraft } from '../diagramTabs'
 
-export interface CustomViewActions { addElement: (id: string) => void; undoMove?: () => Promise<void> }
-type BoxMove = { key: string; dx: number; dy: number; published?: boolean }
+import { emptyMoves, sameLayout, stepMoves, type HistoryStep, type LayoutMove, type ViewHistories } from '../layoutMoveHistory'
+
+export interface CustomViewActions {
+ addElement: (id: string) => void
+ undoMove?: () => Promise<void>
+ redoMove?: () => Promise<void>
+ moveHistoryBusy?: boolean
+}
 
 function replaceView(config: ViewConfig, view: SharedView): ViewConfig {
  return { ...config, version: 2, views: config.views.some(item => item.id === view.id)
@@ -28,19 +35,8 @@ function replaceView(config: ViewConfig, view: SharedView): ViewConfig {
   : [...config.views, view] }
 }
 
-function samePlacement(saved: SharedView, draft: SharedView, key: string) {
- const keys = descendants(draft, key)
- const published = boxesOf(saved).filter(box => keys.has(boxKey(box)))
- const placements = new Map(boxesOf(draft).map(box => [boxKey(box), box]))
- return published.length === keys.size && descendants(saved, key).size === keys.size &&
-  published.every(box => {
-   const match = placements.get(boxKey(box))!
-   return box.x === match.x && box.y === match.y && box.width === match.width &&
-    box.height === match.height && box.parent === match.parent
-  })
-}
-interface Props { split?: boolean; initial?: ModelViews; selected?: string; onSelected?: (view: string | null, title?: string, replace?: boolean) => void; onSaved?: (catalog: ModelViews) => void; navigation?: (views?: SharedView[]) => ReactNode; paletteRevision?: string; selectedId?: string | null; onAddElement?: (parent?: string) => void; onOpenAddConnection?: (parent?: string) => void; onAddConnection?: AddDiagramConnection; file: FileResponse; onDirtyChange?: (value: boolean) => void; settingsHost?: HTMLElement | null; onOpenSettings?: () => void; onActions?: (actions: CustomViewActions | null) => void; onSelectElement?: (id: string) => void; onOpenElementDiagram?: (id: string) => void; layoutDraft?: LayoutDraft; onLayoutChange?: (update: (config: ViewConfig) => ViewConfig) => void; onLayoutSaving?: (busy: boolean) => void }
-export default function CustomViews({ split, initial, selected: controlled, onSelected, onSaved, navigation, paletteRevision, selectedId, file, onDirtyChange, settingsHost, onOpenSettings, onActions, onSelectElement, onAddElement, onOpenAddConnection, onAddConnection, onOpenElementDiagram, layoutDraft, onLayoutChange, onLayoutSaving }: Props) {
+interface Props { split?: boolean; historyControls?: ReactNode; initial?: ModelViews; selected?: string; onSelected?: (view: string | null, title?: string, replace?: boolean) => void; onSaved?: (catalog: ModelViews) => void; navigation?: (views?: SharedView[]) => ReactNode; paletteRevision?: string; selectedId?: string | null; onAddElement?: (parent?: string) => void; onOpenAddConnection?: (parent?: string) => void; onAddConnection?: AddDiagramConnection; file: FileResponse; onDirtyChange?: (value: boolean) => void; settingsHost?: HTMLElement | null; layoutSettingsVisible?: boolean; onOpenSettings?: () => void; onActions?: (actions: CustomViewActions | null) => void; onSelectElement?: (id: string | null) => void; onOpenElementDiagram?: (id: string) => void; layoutDraft?: LayoutDraft; moveHistory?: ViewHistories; onMoveHistoryChange?: (update: (history: ViewHistories) => ViewHistories) => void; onLayoutChange?: (update: (config: ViewConfig) => ViewConfig) => void; onLayoutSaving?: (busy: boolean) => void }
+export default function CustomViews({ split, historyControls, initial, selected: controlled, onSelected, onSaved, navigation, paletteRevision, selectedId, file, onDirtyChange, settingsHost, layoutSettingsVisible, onOpenSettings, onActions, onSelectElement, onAddElement, onOpenAddConnection, onAddConnection, onOpenElementDiagram, layoutDraft, moveHistory: sharedHistory, onMoveHistoryChange, onLayoutChange, onLayoutSaving }: Props) {
  const [localConfig, setLocalConfig] = useState<ViewConfig | null>(initial?.config ?? null)
  const [localSaved, setLocalSaved] = useState<ViewConfig | null>(initial?.config ?? null)
  const [localEtag, setLocalEtag] = useState(initial?.etag ?? '')
@@ -56,7 +52,8 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
  const setSelected: NonNullable<Props['onSelected']> = onSelected ?? ((id: string | null) => setLocalSelection(id ?? ''))
  const standalone = useModelViews(initial ? undefined : file.name)
  const [picked, setPicked] = useState<string[]>([])
- const [settings, setSettings] = useState<string | null>(null)
+ const [inlineSettings, setInlineSettings] = useState(false)
+ const [targetOverride, setTargetOverride] = useState<{ key: string; selection: typeof selectedId }>()
  const [error, setError] = useState('')
  const [svg, setSvg] = useState('')
  const [scene, setScene] = useState<DiagramScene | null>(null)
@@ -64,8 +61,10 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
  const [rendered, setRendered] = useState<ViewConfig | null>(null)
  const [saving, setSaving] = useState(false)
  const savingNow = useRef(false)
- const [moveHistory, setMoveHistory] = useState<Record<string, BoxMove[]>>({})
- const undoAction = useRef<() => Promise<void>>(async () => {})
+ const [localHistory, setLocalHistory] = useState<ViewHistories>({})
+ const moveHistory = sharedHistory ?? localHistory
+ const setMoveHistory = onMoveHistoryChange ?? setLocalHistory
+ const replayMove = useRef<(step: 'undo' | 'redo') => Promise<void>>(async () => {})
  const [scope, setScope] = useState('')
  const upload = useRef<HTMLInputElement>(null)
  const fitAfterPreview = useRef<string | undefined>(undefined)
@@ -73,9 +72,13 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
  const base = `${API_BASE}/files/${encodeURIComponent(file.name)}/views`
  const dirty = !!config && JSON.stringify(config) !== JSON.stringify(saved)
  const view = config?.views.find(v => v.id === selected)
+ const savedView = saved?.views.find(v => v.id === selected)
+ const canReset = !!view && !!savedView && !sameLayout(view, savedView)
  const currentView = useRef(view)
  currentView.current = view
  const connectionPending = useRef(false)
+ const toggleLockAction = useRef<(key: string) => void>(() => {})
+ const toggleLock = useCallback((key: string) => toggleLockAction.current(key), [])
  useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
  useEffect(() => {
   const leave = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = '' } }
@@ -93,7 +96,7 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
  }, [standalone.data])
  useEffect(() => {
   setPicked([])
-  setSettings(null)
+  setTargetOverride(undefined)
   setError('')
  }, [selected])
  useEffect(() => {
@@ -115,20 +118,60 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   }, 120)
   return () => { clearTimeout(timer); stop.abort() }
  }, [base, config, selected, file.name, file.revision, paletteRevision, view])
- const change = (next: SharedView) => {
-  if (savingNow.current) return
-  setConfig(c => c && replaceView(c, next))
+ const applyView = (next: SharedView, refit = false) => {
+  if (refit) fitAfterPreview.current = next.id
+  setConfig(current => current && (saved && sameLayout(next, savedView)
+   ? discardLayouts(current, saved, new Set([next.id]))
+   : replaceView(current, next)))
   setError('')
  }
- const openSettings = useCallback((key: string) => { setSettings(key); onOpenSettings?.() }, [onOpenSettings])
+ const change = (next: SharedView, refit = false) => {
+  if (!view || currentView.current !== view || savingNow.current || connectionPending.current ||
+      sameLayout(next, view)) return
+  applyView(next, refit)
+  rememberMove({ before: view, after: next, refit }, 'record')
+ }
+ toggleLockAction.current = key => {
+  if (!view) return
+  const next = structuredClone(view)
+  const box = boxesOf(next).find(candidate => boxKey(candidate) === key)
+  if (!box) return
+  const layout = { ...box.layout }
+  if (interiorLocked(layout)) { delete layout.positionLocked; delete layout.locked }
+  else layout.positionLocked = true
+  if (Object.keys(layout).length) box.layout = layout
+  else delete box.layout
+  next.presentation = true
+  change(next)
+ }
+ const openSettings = () => { setInlineSettings(true); onOpenSettings?.() }
  const currentScene = previewView?.id === selected ? scene : null
- const graph = useSavedDiagram(currentScene, previewView ?? undefined, file.model, picked, saving || config !== rendered, openSettings, selectedId, settings)
+ useEffect(() => {
+  if (selectedId !== null || !currentScene) return
+  setPicked(previous => {
+   const annotations = previous.filter(key => currentScene.nodes.some(node => node.key === key && node.annotation))
+   return annotations.length === previous.length ? previous : annotations
+  })
+ }, [currentScene, selectedId])
+ const selectedTarget = selectedId ? currentScene?.nodes.find(node => node.elementId === selectedId)?.key : picked.at(-1)
+ const target = targetOverride && targetOverride.selection === selectedId ? targetOverride.key : selectedTarget
+ const settingsTarget = target && view && boxesOf(view).some(box => boxKey(box) === target) ? target : ''
+ const chooseSettingsTarget = (key: string) => setTargetOverride({ key, selection: selectedId })
+ const graph = useSavedDiagram(currentScene, previewView ?? undefined, file.model, picked, saving || config !== rendered,
+  toggleLock, selectedId, layoutSettingsVisible || (!settingsHost && inlineSettings) ? settingsTarget : undefined, view)
  const subject = file.model.elements.find(e => e.shortName === view?.subject || e.qname === view?.subject)
  const pick = (key: string, multiple: boolean) => {
-  setPicked(previous => multiple ? previous.includes(key) ? previous.filter(k => k !== key) : [...previous, key] : [key])
-  if (!multiple && settings !== null) setSettings(key)
-  const element = currentScene?.nodes.find(n => n.key === key)?.elementId
-  if (element) onSelectElement?.(element)
+  const next = multiple ? picked.includes(key) ? picked.filter(k => k !== key) : [...picked, key] : [key]
+  setPicked(next)
+  setTargetOverride(undefined)
+  const nativeElement = (value: string) => currentScene?.nodes.find(node => node.key === value)?.elementId
+  const primary = next.includes(key) ? nativeElement(key) : undefined
+  onSelectElement?.(primary ?? next.map(nativeElement).filter(Boolean).at(-1) ?? null)
+ }
+ const selectDiagramElement = (id: string | null) => {
+  setPicked([])
+  setTargetOverride(undefined)
+  onSelectElement?.(id)
  }
  const placeElement = (id: string, position?: DropPosition) => {
   const active = currentView.current
@@ -138,16 +181,19 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
    const element = file.model.elements.find(e => e.id === id)!
    if (next !== active) change(next)
    setPicked([viewKeyFor(next, file.model, element)])
+   setTargetOverride(undefined)
    onSelectElement?.(id)
   } catch (error) { setError(String(error)) }
  }
- const latestMove = moveHistory[selected]?.at(-1)
- const canUndoMove = !!latestMove && !saving && config === rendered
+ const latestMove = moveHistory[selected]?.undo.at(-1)
+ const nextMove = moveHistory[selected]?.redo.at(-1)
+ const moveHistoryBusy = saving
  useEffect(() => {
-  onActions?.(view ? { addElement: id => placeElement(id),
-   undoMove: latestMove ? () => undoAction.current() : undefined } : null)
+  onActions?.(view ? { addElement: id => placeElement(id), moveHistoryBusy,
+   undoMove: latestMove ? () => replayMove.current('undo') : undefined,
+   redoMove: nextMove ? () => replayMove.current('redo') : undefined } : null)
   return () => onActions?.(null)
- }, [view, file.model, onActions, onSelectElement, latestMove])
+ }, [view, file.model, onActions, onSelectElement, latestMove, nextMove, moveHistoryBusy])
 
  const connect = async (params: Connection) => {
   if (!view || !onAddConnection || !currentScene || connectionPending.current || savingNow.current) return
@@ -166,11 +212,15 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
    const latest = currentView.current
    if (!created || !latest || latest.id !== view.id) return
    const reference = viewReference(file.model, created)
+   connectionPending.current = false
    if (latest === view) {
     staged.edges[staged.edges.length - 1].element = reference
-    change(staged)
+    applyView(staged)
+    rememberMove({ before: latest, after: staged, refit: false }, 'record')
    } else {
-    change(addViewConnection(latest, reference, from, to))
+    const next = addViewConnection(latest, reference, from, to)
+    applyView(next)
+    rememberMove({ before: latest, after: next, refit: false }, 'record')
    }
   } catch (error) {
    const message = error instanceof Error ? error.message : String(error)
@@ -178,16 +228,14 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   } finally { connectionPending.current = false }
  }
  const arrange = (key?: string) => {
-  if (!view || savingNow.current) return
+  if (!view || savingNow.current || connectionPending.current) return
   try {
    const labels = currentScene && new Map(currentScene.edges.map(edge => [edge.key, edge.label]))
    const next = autoLayout(view, key, labels ?? undefined)
-   if (JSON.stringify(next) === JSON.stringify(view) && config === rendered) {
-    setFitRevision(revision => revision + 1)
-   } else {
-    fitAfterPreview.current = selected
-    change(next)
-   }
+   if (JSON.stringify(next) === JSON.stringify(view)) {
+    if (config === rendered) setFitRevision(revision => revision + 1)
+    else fitAfterPreview.current = selected
+   } else change(next, true)
   } catch (error) { setError(String(error)) }
  }
  const writeViews = async (next: ViewConfig): Promise<ModelViews> => {
@@ -199,7 +247,10 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   return { config: next, etag: response.headers.get('ETag') ?? '' }
  }
  const acceptSave = (catalog: ModelViews) => {
-  setLocalSaved(catalog.config); setLocalEtag(catalog.etag); onSaved?.(catalog)
+  if (!onLayoutChange) {
+   setLocalConfig(catalog.config); setLocalSaved(catalog.config); setLocalEtag(catalog.etag)
+  }
+  onSaved?.(catalog)
  }
  const markSaving = (pending: boolean) => {
   savingNow.current = pending
@@ -207,54 +258,46 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   onLayoutSaving?.(pending)
  }
  const save = async () => {
-  if (!config || config !== rendered || savingNow.current) return
+  if (!dirty || !config || config !== rendered || savingNow.current || connectionPending.current) return
   markSaving(true)
-  try { acceptSave(await writeViews(config)); setError('') }
+  try {
+   acceptSave(await writeViews(config))
+   setError('')
+  }
   catch (e) { setError(e instanceof Error ? e.message : String(e)) }
   finally { markSaving(false) }
  }
- const move = async ({ key, dx, dy }: BoxMove, undo = false) => {
-  if (!view || !config || config !== rendered || savingNow.current || connectionPending.current) return false
-  try {
-   const next = moveBox(view, key, dx, dy)
-   if (next === view) return false
-   // A placement can be published independently of other view drafts when its
-   // box already has the same geometry in the saved view.
-   const published = saved?.views.find(item => item.id === view.id)
-   let nextSaved: ViewConfig | undefined
-   if (saved && (!published || samePlacement(published, view, key))) {
-    try {
-     nextSaved = replaceView(saved, !published || published === view ? next : moveBox(published, key, dx, dy))
-    } catch {
-     // The drop can rely on other draft changes, such as a peer's position.
-     // Keep that move in the draft for an explicit save of the complete view.
-    }
-   }
-   if (nextSaved) {
-    markSaving(true)
-    try {
-     const catalog = await writeViews(nextSaved)
-     if (dirty || !onLayoutChange) setConfig(current => current && replaceView(current, next))
-     acceptSave(catalog)
-    } finally { markSaving(false) }
-   } else {
-    change(next)
-   }
-   setError('')
-   setMoveHistory(history => ({ ...history, [selected]: undo
-    ? (history[selected] ?? []).slice(0, -1)
-    : [...(history[selected] ?? []).slice(-39), { key, dx, dy, published: !!nextSaved }] }))
-   return true
-  } catch (e) {
-   setError(e instanceof Error ? e.message : String(e))
-   return false
+ const rememberMove = (entry: LayoutMove, step: HistoryStep) => {
+  setMoveHistory(history => ({ ...history, [selected]: stepMoves(history[selected] ?? emptyMoves, entry, step) }))
+ }
+ replayMove.current = async step => {
+  const entry = step === 'undo' ? latestMove : nextMove
+  if (!entry || !view || savingNow.current || connectionPending.current) return
+  const from = step === 'undo' ? entry.after : entry.before
+  const next = step === 'undo' ? entry.before : entry.after
+  if (!sameLayout(view, from)) {
+   setError('This view has changed since that edit.')
+   return
   }
+  applyView(next, entry.refit)
+  rememberMove(entry, step)
  }
- undoAction.current = async () => {
-  if (!latestMove) return
-  await move({ key: latestMove.key, dx: -latestMove.dx, dy: -latestMove.dy }, true)
+ const rerouteConnector = (id: string, points: Point[]) => {
+  if (!view || !currentScene || config !== rendered || savingNow.current || connectionPending.current) return
+  const edge = currentScene.edges.find(candidate => candidate.elementId === id)
+  const index = view.edges.findIndex(candidate => candidate.element === edge?.key)
+  if (index < 0) return
+  try {
+   const next = editSavedConnector(view, view.edges[index].element, points, new Map(currentScene.edges.map(item => [item.key, item.label])))
+   change(next)
+  } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
  }
- const finishDrag = async (node: Node, dragged: Node[]) => {
+ const moveConnectorLabel = (id: string, position: Point) => {
+  if (!view || config !== rendered || savingNow.current || connectionPending.current) return
+  const edge = currentScene?.edges.find(candidate => candidate.elementId === id)
+  if (edge) change(moveSavedLabel(view, edge.key, position, edge.label))
+ }
+ const finishDrag = (node: Node, dragged: Node[]) => {
   if (!currentScene) return
   const original = currentScene.nodes.find(item => item.key === node.data.viewKey)
   if (!original) return
@@ -264,33 +307,40 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
    return before ? [{ id: sceneNodeId(before), type: 'position', position: relativePosition(before, currentScene), dragging: false }] : []
   }))
   reset(dragged.filter(item => item.id !== node.id))
-  const moved = await move({ key: original.key, dx: Math.round(node.position.x - position.x), dy: Math.round(node.position.y - position.y) })
-  if (!moved) reset([node])
+  try {
+   if (view && config === rendered && !savingNow.current && !connectionPending.current) {
+    const dx = Math.round(node.position.x - position.x), dy = Math.round(node.position.y - position.y)
+    const after = moveBox(view, original.key, dx, dy)
+    if (after !== view) { change(after); return }
+   }
+  } catch (error) { setError(error instanceof Error ? error.message : String(error)) }
+  reset([node])
  }
- const revert = () => {
-  if (!saved || savingNow.current) return
-  setMoveHistory(history => ({ ...history, [selected]: (history[selected] ?? []).filter(move => move.published) }))
-  if (onLayoutChange) {
-   setConfig(current => current && discardLayouts(current, saved, new Set([selected])))
-   if (!saved.views.some(item => item.id === selected)) setSelected(null, undefined, true)
-  } else {
-   setConfig(saved)
-   setSelected(saved.views.some(item => item.id === selected) ? selected : saved.views[0]?.id ?? '')
-  }
+ const resetToSaved = () => {
+  if (!savedView || !canReset || savingNow.current || connectionPending.current) return
+  change(savedView, true)
   setPicked([])
-  setSettings(null)
+  setTargetOverride(undefined)
+ }
+ const discardNewView = () => {
+  if (!view || !saved || savedView || savingNow.current || connectionPending.current) return
+  setConfig(current => current && discardLayouts(current, saved, new Set([selected])))
+  setMoveHistory(({ [selected]: removed, ...remaining }) => remaining)
+  setSelected(onLayoutChange ? null : saved.views[0]?.id ?? '', undefined, true)
  }
  const download = (text: string, name: string, type: string) => { const url = URL.createObjectURL(new Blob([text], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
  const boundary = () => {
   if (!view || !picked.length || savingNow.current) return
   const next = structuredClone(view), members = boxesOf(next).filter(b => picked.includes(boxKey(b)))
   const parent = members[0]?.parent
-  if (members.some(b => b.parent !== parent || lockedParent(next, boxKey(b)))) { setError('Choose elements in the same unlocked boundary.'); return }
+  if (members.some(b => b.parent !== parent || b.layout?.positionLocked || lockedParent(next, boxKey(b)))) {
+   setError('Choose elements with unlocked placement in the same group.'); return
+  }
   const id = `boundary-${crypto.randomUUID()}`
   next.boundaries ??= []
   next.boundaries.push({ id, label: 'Boundary', kind: 'group', parent, x: 0, y: 0, width: 300, height: 200, layout: { pattern: 'flow' } })
   for (const member of members) member.parent = id
-  try { change(autoLayout(next)); setPicked([id]); setSettings(id) } catch (e) { setError(String(e)) }
+  try { change(autoLayout(next)); setPicked([id]); chooseSettingsTarget(id) } catch (e) { setError(String(e)) }
  }
  const scopes = file.model.elements.filter(e => ['part', 'package'].includes(e.kind) && file.model.elements.some(c => c.parentId === e.id && canPlaceElement(c)))
  const createView = async () => {
@@ -308,39 +358,33 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   const nodes = file.model.elements.filter(e => e.parentId === owner.id && canPlaceElement(e))
   const key = (id: string) => { const e = file.model.elements.find(e => e.id === id); return e ? viewReference(file.model, e) : '' }
   const ids = new Set(nodes.map(n => n.id))
-  const next: SharedView = { id: `view-${crypto.randomUUID()}`, title: `${owner.name} | Design`, owner: '.', subject: owner.shortName || owner.qname, width: 800, height: 600, presentation: true, layout: { pattern: 'flow', gap: nodes.length <= 20 ? 86 : 40 },
+  const next: SharedView = { id: `view-${crypto.randomUUID()}`, title: `${owner.name} | Design`, owner: '.', subject: owner.shortName || owner.qname, width: 800, height: 600, presentation: true, layout: { pattern: 'flow', gap: 54 },
    nodes: nodes.map((n, i) => ({ element: key(n.id), x: 40 + i * 240, y: 80, width: glyphs[n.id]?.width || 224, height: glyphs[n.id]?.height || 160 })),
    edges: file.model.elements.filter(e => ['connection', 'flow', 'dependency'].includes(e.kind) && ids.has(e.sourceNodeId || e.sourceId || '') && ids.has(e.targetNodeId || e.targetId || '')).map(e => ({ element: key(e.id), from: key(e.sourceNodeId || e.sourceId!), to: key(e.targetNodeId || e.targetId!), points: [], label: [0, 0] })) }
   try { const laidOut = autoLayout(next); setConfig(c => ({ version: 2, views: [...(c?.views ?? []), laidOut] })); setSelected(next.id, next.title, true); setPicked([]) } catch (e) { setError(String(e)) }
  }
- const settingsPanel = view && settings !== null && <SharedSettings view={view} model={file.model}
-  scene={currentScene} target={settings} onChange={change} onArrange={arrange}
-  onClose={() => setSettings(null)} onTarget={setSettings} />
+ const settingsPanel = view && (settingsHost || inlineSettings) && <SharedSettings view={view} model={file.model}
+  scene={currentScene} target={settingsTarget} onChange={change} onArrange={arrange}
+  onClose={settingsHost ? undefined : () => setInlineSettings(false)} onTarget={chooseSettingsTarget} />
  return <section className="shared-views">
-  <div className="view-toolbar diagram-toolbar">
-   {navigation?.(config?.views)}
-   {view && <>
-    <button type="button" className="icon-button tooltip" aria-label="Auto layout" data-tip="Auto layout"
-     onClick={() => arrange()}><Wand2 size={15} /></button>
-    <button type="button" className="icon-button tooltip" aria-label="View settings" data-tip="View settings"
-     onClick={() => openSettings('')}><Settings2 size={15} /></button>
-    {(dirty || saving) && <button type="button" className="icon-button tooltip active" aria-label="Save views"
-     data-tip={saving ? 'Saving…' : 'Save views'} aria-busy={saving} disabled={config !== rendered || saving}
-     onClick={() => void save()}>{saving ? <Loader2 className="spin" size={15} /> : <Save size={15} />}</button>}
-   </>}
-   <ActionMenu label="Diagram actions" iconOnly>
+  <DiagramToolbar navigation={navigation?.(config?.views)} historyControls={historyControls} onAutoLayout={view ? () => arrange() : undefined}
+   resetControl={view && <button type="button" className="icon-button tooltip" aria-label="Reset to last save"
+    data-tip="Reset to last save" disabled={!canReset || saving} onClick={resetToSaved}><RotateCcw size={15} /></button>}
+   saveControl={view && <button type="button" className={'icon-button tooltip' + (dirty || saving ? ' active' : '')} aria-label="Save views"
+    data-tip={saving ? 'Saving…' : 'Save views'} aria-busy={saving} disabled={!dirty || config !== rendered || saving}
+    onClick={() => void save()}>{saving ? <Loader2 className="spin" size={15} /> : <Save size={15} />}</button>}>
+    {view && <button onClick={openSettings}>Layout properties</button>}
     {view && onAddElement && <button onClick={() => onAddElement(subject?.id)}>Add part</button>}
     {view && onOpenAddConnection && <button onClick={() => onOpenAddConnection(subject?.id)}>Add connection</button>}
     {view && <button disabled={!picked.length || saving} onClick={boundary}>Group selected elements</button>}
-    {view && <button disabled={!canUndoMove} onClick={() => void undoAction.current()}>Undo last move</button>}
+    {view && !historyControls && <button disabled={!latestMove || moveHistoryBusy} onClick={() => void replayMove.current('undo')}>Undo last move</button>}
+    {view && !historyControls && <button disabled={!nextMove || moveHistoryBusy} onClick={() => void replayMove.current('redo')}>Redo last move</button>}
     {view && <button disabled={!svg || config !== rendered} onClick={() => download(svg, selected + '.svg', 'image/svg+xml')}>Download SVG</button>}
     {view && <button onClick={() => download(JSON.stringify(config, null, 2) + '\n', file.name.replace(/\.sysml$/, '.views.json'), 'application/json')}>Download view definitions</button>}
     <button disabled={saving} onClick={() => upload.current?.click()}>Import view file</button>
-    {view && dirty && (!onLayoutChange || layoutDirty(layoutDraft, selected)) &&
-     <button disabled={saving} onClick={revert}>Discard draft changes</button>}
-   </ActionMenu>
-   <input ref={upload} hidden type="file" accept=".json" onChange={async e => { const f = e.target.files?.[0]; if (!f) return; try { const c = JSON.parse(await f.text()) as ViewConfig; if (!Array.isArray(c.views) || !c.views.length) throw new Error('View file must contain selected views.'); setConfig(c); setSelected(c.views[0].id, c.views[0].title); setPicked([]); setSettings(null) } catch (err) { setError(String(err)) }; e.target.value = '' }} />
-  </div>
+    {view && !savedView && <button disabled={saving} onClick={discardNewView}>Discard new view</button>}
+  </DiagramToolbar>
+  <input ref={upload} hidden type="file" accept=".json" onChange={async e => { const f = e.target.files?.[0]; if (!f) return; try { const c = JSON.parse(await f.text()) as ViewConfig; if (!Array.isArray(c.views) || !c.views.length) throw new Error('View file must contain selected views.'); setConfig(c); setSelected(c.views[0].id, c.views[0].title); setPicked([]); setTargetOverride(undefined) } catch (err) { setError(String(err)) }; e.target.value = '' }} />
   {config && selected === '' && <div className="shared-create">
    <label htmlFor="new-view-scope">Model scope</label>
    <select id="new-view-scope" className="select" value={scope || scopes[0]?.id || ''} onChange={e => setScope(e.target.value)}>
@@ -352,13 +396,14 @@ export default function CustomViews({ split, initial, selected: controlled, onSe
   {view && config !== rendered && !error && <p className="shared-render-status" role="status">Updating preview…</p>}
   {error && <p role="alert" className="shared-error">{error}</p>}
   <div className="shared-workbench">
-   {view && scene && previewView?.id === selected && <DiagramCanvas elementDrop={{ file: file.name, place: placeElement }} split={split} key={selected} frameTitle={previewView.title} fitRevision={fitRevision} nodes={graph.nodes} edges={graph.edges} onNodesChange={graph.onNodesChange} onEdgesChange={graph.onEdgesChange}
+   {view && scene && previewView?.id === selected && <DiagramCanvas onConnectorRouteChange={rerouteConnector} onConnectorLabelChange={moveConnectorLabel} includeRoutes elementDrop={{ file: file.name, place: placeElement }} split={split} key={selected} frameTitle={previewView.title} fitRevision={fitRevision} nodes={graph.nodes} edges={graph.edges} onNodesChange={graph.onNodesChange} onEdgesChange={graph.onEdgesChange}
+    onClearSelection={() => selectDiagramElement(null)}
     onNodeClick={(event, node) => pick(String(node.data.viewKey), event.shiftKey || event.ctrlKey || event.metaKey)}
     onNodeDoubleClick={(event, node) => {
      if (node.type !== 'sysml' || (event.target as Element).closest('button, .react-flow__handle')) return
      onOpenElementDiagram?.(node.id)
     }}
-    onEdgeClick={(_, edge) => onSelectElement?.(edge.id)}
+    onEdgeClick={(_, edge) => selectDiagramElement(edge.id)}
     onNodeDragStop={(_, node, dragged) => void finishDrag(node, dragged)}
     onConnect={params => void connect(params)}
    />}

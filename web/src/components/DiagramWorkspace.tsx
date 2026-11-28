@@ -4,12 +4,16 @@ import type { FileResponse } from '../types'
 import type { ModelViews } from '../modelViews'
 import type { SharedView, ViewConfig } from '../sharedViews'
 import { layoutDirty, type LayoutDraft } from '../diagramTabs'
+import DiagramToolbar from './DiagramToolbar'
 import CustomViews, { type CustomViewActions } from './CustomViews'
+import type { ViewHistories } from '../layoutMoveHistory'
 import type { AddDiagramConnection } from '../diagramConnections'
+import UnsavedDot from './UnsavedDot'
 
 interface Props {
   file: FileResponse
   split?: boolean
+  historyControls?: ReactNode
   view: string | null
   catalog?: ModelViews
   catalogError?: string
@@ -18,16 +22,19 @@ interface Props {
   onSaved: (catalog: ModelViews) => void
   paletteRevision?: string
   settingsHost?: HTMLElement | null
+  layoutSettingsVisible?: boolean
   onOpenSettings?: () => void
   onActions?: (actions: CustomViewActions | null) => void
   selectedId?: string | null
-  onSelectElement?: (id: string) => void
+  onSelectElement?: (id: string | null) => void
   onAddElement?: (parent?: string) => void
   onOpenAddConnection?: (parent?: string) => void
   onAddConnection?: AddDiagramConnection
   children: (navigation: ReactNode) => ReactNode
   onDirtyChange?: (dirty: boolean) => void
   layoutDraft?: LayoutDraft
+  moveHistory?: ViewHistories
+  onMoveHistoryChange?: (update: (history: ViewHistories) => ViewHistories) => void
   onLayoutChange?: (update: (config: ViewConfig) => ViewConfig) => void
   onLayoutSaving?: (busy: boolean) => void
   onOpenElementDiagram?: (id: string) => void
@@ -48,16 +55,17 @@ export default function DiagramWorkspace({ file, view, catalog, catalogError, on
         {choices.map(item => <option key={item.id} value={'view:' + item.id}>{item.title}{layoutDirty(tools.layoutDraft, item.id) ? ' · Unsaved' : ''}</option>)}
       </optgroup>}
     </select>
+    {!empty && layoutDirty(tools.layoutDraft, view) && <UnsavedDot label="Unsaved diagram changes" />}
     <button className="icon-button tooltip" type="button" disabled={!catalog} onClick={() => onOpen('')}
       aria-label="New saved view" data-tip="New saved view"><Plus size={15} /></button>
   </div>
   return <section className="diagram-workspace" aria-label="Diagram workspace">
     {tabs}
-    {empty ? <div className="view-toolbar diagram-toolbar">{picker()}</div> : view === null ? children(picker()) : catalog ? (
+    {empty ? <DiagramToolbar navigation={picker()} historyControls={tools.historyControls} /> : view === null ? children(picker()) : catalog ? (
       <CustomViews {...tools} file={file} initial={catalog} selected={view} onSelected={onSelected}
         onSaved={onSaved} navigation={picker} />
     ) : <>
-      <div className="view-toolbar diagram-toolbar">{picker()}</div>
+      <DiagramToolbar navigation={picker()} historyControls={tools.historyControls} />
       <p className="shared-render-status" role={catalogError ? 'alert' : 'status'}>{catalogError ?? 'Loading saved views…'}</p>
     </>}
   </section>

@@ -1,0 +1,96 @@
+name: Version SkyView on main
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Previously merged pull request number
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  plan:
+    if: >-
+      github.repository == 'Rexus/SkyView' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged)
+    runs-on: ubuntu-latest
+    outputs:
+      intent: ${{ steps.plan.outputs.intent }}
+      merged: ${{ steps.plan.outputs.merged }}
+      pr: ${{ steps.plan.outputs.pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Read the merged PR and select its version rule
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          [[ "$PR" =~ ^[1-9][0-9]*$ ]]
+          pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR")
+          jq -e '.merged and .base.ref == "main"' <<< "$pull" >/dev/null
+          branch=$(jq -er .head.ref <<< "$pull")
+          title=$(jq -er .title <<< "$pull")
+          merged=$(jq -er .merge_commit_sha <<< "$pull")
+          intent=$(python3 deployment/release/version.py intent -- "$branch" "$title")
+          printf 'pr=%s\nmerged=%s\nintent=%s\n' "$PR" "$merged" "$intent" >> "$GITHUB_OUTPUT"
+          if [[ -z "$intent" ]]; then
+            echo 'No release requested by the branch or PR title' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  stamp:
+    needs: plan
+    if: needs.plan.outputs.intent != ''
+    runs-on: ubuntu-latest
+    environment: release-versioning
+    concurrency:
+      group: skyview-version-main
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: release-app
+        with:
+          client-id: ${{ vars.SKYVIEW_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SKYVIEW_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Sign and push the version commit and tag
+        env:
+          APP_TOKEN: ${{ steps.release-app.outputs.token }}
+          SIGNING_KEY: ${{ secrets.SKYVIEW_RELEASE_GPG_KEY }}
+          SIGNING_EMAIL: ${{ vars.SKYVIEW_RELEASE_SIGNING_EMAIL }}
+          INTENT: ${{ needs.plan.outputs.intent }}
+          PR: ${{ needs.plan.outputs.pr }}
+          MERGED: ${{ needs.plan.outputs.merged }}
+        run: |
+          : "${SIGNING_KEY:?Set SKYVIEW_RELEASE_GPG_KEY in the release-versioning environment}"
+          : "${SIGNING_EMAIL:?Set SKYVIEW_RELEASE_SIGNING_EMAIL in the release-versioning environment}"
+          export GNUPGHOME
+          GNUPGHOME=$(mktemp -d)
+          trap 'gpgconf --kill gpg-agent; rm -rf "$GNUPGHOME"' EXIT
+          printf '%s\n' "$SIGNING_KEY" | gpg --batch --import
+          export SKYVIEW_RELEASE_FINGERPRINT
+          SKYVIEW_RELEASE_FINGERPRINT=$(gpg --batch --with-colons --list-secret-keys "$SIGNING_EMAIL" |
+            awk -F: '$1 == "sec" {primary=1; next} $1 == "fpr" && primary {print $10; primary=0}')
+          [[ "$SKYVIEW_RELEASE_FINGERPRINT" =~ ^[A-F0-9]{40}$ ]]
+          git config user.name 'SkyView Release'
+          git config user.email "$SIGNING_EMAIL"
+          auth=$(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          bash deployment/release/stamp-main.sh "$PR" "$MERGED" "$INTENT"

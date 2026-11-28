@@ -321,11 +321,16 @@ func (s *Server) deleteFile(name string) error {
 	if err != nil {
 		return err
 	}
+	viewDraft, err := s.viewDraftPath(name)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(path); err != nil {
 		return err
 	}
 	_ = os.Remove(layout)
 	_ = os.Remove(viewPath)
+	_ = os.Remove(viewDraft)
 	_ = os.RemoveAll(history)
 	return nil
 }

@@ -35,13 +35,14 @@ type SceneNode struct {
 	Ports      []ScenePort `json:"ports"`
 }
 type SceneEdge struct {
-	Key       string       `json:"key"`
-	ElementID string       `json:"elementId"`
-	From      string       `json:"from"`
-	To        string       `json:"to"`
-	Points    [][2]float64 `json:"points"`
-	Label     string       `json:"label"`
-	SVG       string       `json:"svg"`
+	Key         string         `json:"key"`
+	ElementID   string         `json:"elementId"`
+	From        string         `json:"from"`
+	To          string         `json:"to"`
+	Points      [][2]float64   `json:"points"`
+	Label       string         `json:"label"`
+	LabelLeader *[2][2]float64 `json:"labelLeader,omitempty"`
+	SVG         string         `json:"svg"`
 }
 
 // BuildScene uses Render's exact drawing primitives. The browser does not parse

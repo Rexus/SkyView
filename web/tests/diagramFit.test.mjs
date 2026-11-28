@@ -14,6 +14,14 @@ test('Auto layout fits the new diagram after the cards are measured', async () =
     Object.defineProperty(globalThis, key, { configurable: true, value: dom.window[key] })
   }
   setupFlowDOM(dom, globals)
+  // React Flow's renderer uses 100% dimensions, which fill a 900 x 600 test canvas.
+  Object.defineProperties(dom.window.HTMLElement.prototype, {
+    offsetWidth: { configurable: true, get() { return this.style.width.endsWith('px') ? parseFloat(this.style.width) : 900 } },
+    offsetHeight: { configurable: true, get() {
+      if (this.matches('.diagram-scope-frame > span')) return 20
+      return this.style.height.endsWith('px') ? parseFloat(this.style.height) : 600
+    } },
+  })
   globals.set('IS_REACT_ACT_ENVIRONMENT', Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT'))
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   const temp = await mkdtemp(fileURLToPath(new URL('./.diagram-fit-', import.meta.url)))
@@ -54,6 +62,8 @@ test('Auto layout fits the new diagram after the cards are measured', async () =
     await act(async () => fit().click())
     await settle()
     const before = flow.getViewport()
+    const captionTop = ({ y, zoom }, top) => y + (top - 28 - 20) * zoom
+    assert.ok(captionTop(before, original[0].position.y) >= 0, 'fit includes the diagram title')
 
     await render(arranged.map(node => ({ ...node, measured: undefined })), 1)
     await settle()
@@ -63,6 +73,8 @@ test('Auto layout fits the new diagram after the cards are measured', async () =
     await settle()
     const automatic = flow.getViewport()
     assert.notDeepEqual(automatic, before, 'measurement should complete the pending fit')
+    assert.ok(captionTop(automatic, arranged[0].position.y) >= 0)
+    assert.ok(captionTop(automatic, arranged[0].position.y) < 45, 'fit uses the canvas without an extra toolbar gutter')
     await act(async () => fit().click())
     await settle()
     assert.deepEqual(flow.getViewport(), automatic, 'manual and automatic fits should use the same new bounds')

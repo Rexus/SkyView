@@ -1,20 +1,21 @@
 export type Point = [number, number]
-export type Arrangement = { pattern?: 'flow' | 'horizontal' | 'vertical' | 'grid'; direction?: 'LR' | 'TB'; columns?: number; locked?: boolean; gap?: number; padding?: number }
+export type Arrangement = { pattern?: 'flow' | 'horizontal' | 'vertical' | 'grid'; direction?: 'LR' | 'TB'; columns?: number; locked?: boolean; positionLocked?: boolean; gap?: number; padding?: number }
 export type ViewStyle = { fill?: string; stroke?: string; color?: string; dash?: string }
 export type Box = { x: number; y: number; width: number; height: number; parent?: string; style?: string; layout?: Arrangement }
 export type ViewNode = Box & { element: string; detail?: boolean; shape?: 'rectangle' | 'cylinder' | 'hexagon'; labels?: { text: string; x: number; y: number; size?: number }[] }
 export type Boundary = Box & { id: string; label: string; kind?: string }
-export type ViewEdge = { element: string; from: string; to: string; points: Point[]; label: Point; caption?: string }
+export type ViewEdge = { element: string; from: string; to: string; points: Point[]; label: Point; labelMoved?: boolean; caption?: string }
 export type SharedView = { id: string; title: string; owner: string; subject: string; origin?: Point; width: number; height: number; presentation?: boolean; layout?: Arrangement; nodes: ViewNode[]; boundaries?: Boundary[]; edges: ViewEdge[] }
 export type ViewConfig = { version: number; styles?: Record<string, ViewStyle>; views: SharedView[] }
 export const boxKey = (box: ViewNode | Boundary) => 'element' in box ? box.element : box.id
 export const boxesOf = (view: SharedView) => [...view.nodes, ...(view.boundaries ?? [])]
+export const interiorLocked = (layout?: Arrangement) => Boolean(layout?.locked || layout?.positionLocked)
 export function canvasBounds(view: SharedView, inset = 0) {
  const [x, y] = view.origin ?? [0, 0]
  return { x: x + inset, y: y + inset, width: Math.max(0, view.width - 2 * inset), height: Math.max(0, view.height - 2 * inset) }
 }
 
-export function expandCanvas(view: SharedView, padding = 24) {
+export function expandCanvas(view: SharedView, padding = 24, extra: Pick<Box, 'x' | 'y' | 'width' | 'height'>[] = []) {
  const current = canvasBounds(view)
  let { x, y } = current
  let right = x + current.width, bottom = y + current.height
@@ -22,7 +23,7 @@ export function expandCanvas(view: SharedView, padding = 24) {
   x = Math.min(x, left - padding); y = Math.min(y, top - padding)
   right = Math.max(right, r + padding); bottom = Math.max(bottom, b + padding)
  }
- for (const box of boxesOf(view)) include(box.x, box.y, box.x + box.width, box.y + box.height)
+ for (const box of [...boxesOf(view), ...extra]) include(box.x, box.y, box.x + box.width, box.y + box.height)
  for (const edge of view.edges) {
   for (const [px, py] of [...edge.points, edge.label]) include(px, py, px, py)
  }
@@ -46,7 +47,7 @@ export function lockedAncestor(view: SharedView, key: string): string | undefine
  while (parent && !seen.has(parent)) {
   seen.add(parent)
   const box = boxes.get(parent)
-  if (box?.layout?.locked) locked = parent
+  if (interiorLocked(box?.layout)) locked = parent
   parent = box?.parent
  }
  return locked

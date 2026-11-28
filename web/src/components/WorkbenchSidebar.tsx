@@ -9,6 +9,7 @@ import ActionMenu from './ActionMenu'
 import ProjectMap, { type OpenModel } from './ProjectMap'
 import Sidebar from './Sidebar'
 import { canPlaceElement } from '../elementDrag'
+import UnsavedDot from './UnsavedDot'
 
 export type NavigatorPanel = 'projects' | 'elements' | 'settings'
 export type SettingsPage = 'colours' | 'layout'
@@ -23,6 +24,8 @@ interface Props {
   catalog?: ModelViews
   catalogError?: string
   layoutDrafts?: Record<string, LayoutDraft>
+  sourceDirty?: boolean
+  paletteDirty?: boolean
   selectedId: string | null
   onSelect: (id: string) => void
   onOpenFile: OpenModel
@@ -32,7 +35,6 @@ interface Props {
   actions: CustomViewActions | null
   projectBar: ReactNode
   modelActions?: ReactNode
-  inspector: ReactNode
   colourSettings?: ReactNode
 }
 
@@ -42,48 +44,58 @@ const panels = [
 ] as const
 
 export default function WorkbenchSidebar({
-  hidden, canDragElements, panel, onPanel, files, file, view, catalog, catalogError, layoutDrafts, selectedId, onSelect, onOpenFile,
-  settingsHost, settingsPage, onSettingsPage, actions, projectBar, modelActions, inspector, colourSettings,
+  hidden, canDragElements, panel, onPanel, files, file, view, catalog, catalogError, layoutDrafts, sourceDirty, paletteDirty, selectedId, onSelect, onOpenFile,
+  settingsHost, settingsPage, onSettingsPage, actions, projectBar, modelActions, colourSettings,
 }: Props) {
   const [partsOnly, setPartsOnly] = useState(false)
   const selected = file?.model.elements.find(e => e.id === selectedId)
   const openElements = panel === 'elements'
-  return <aside id="workbench-sidebar" className="workbench-sidebar" aria-label="Model navigator" hidden={hidden}>
-    <nav className="workbench-tabs" aria-label="Navigation panels">
-      {panels.map(([name, title, Icon]) => <button type="button" key={name} aria-pressed={panel === name}
-        aria-label={name === 'elements' ? 'Model elements' : title} onClick={() => onPanel(name)}>
-        <Icon size={14} aria-hidden="true" /><span>{title}</span>
-      </button>)}
-    </nav>
-    <div className="workbench-panel projects-panel" hidden={panel !== 'projects'}>
-      {projectBar}
-      <ProjectMap files={files} file={file} view={view} actions={modelActions} views={catalog} viewError={catalogError} layoutDrafts={layoutDrafts} onOpen={onOpenFile} />
-    </div>
-    <div className="workbench-panel elements-panel" hidden={!openElements}>
-      <Sidebar canDrag={canDragElements} model={file?.model ?? null} fileKey={file?.name ?? ''} selectedId={selectedId}
-        onSelect={onSelect} partsOnly={partsOnly} controls={
-          <ActionMenu label="Element actions" iconOnly>
-            <button type="button" aria-pressed={partsOnly} onClick={() => setPartsOnly(value => !value)}>
-              {partsOnly ? 'Show all elements' : 'Show parts and items'}
-            </button>
-            <button disabled={!actions || !selected || !canPlaceElement(selected)}
-              onClick={() => selected && actions?.addElement(selected.id)}><Box size={14} /> Add selected to view</button>
-          </ActionMenu>
-        } />
-      {openElements && file && <Relationships model={file.model} onSelect={onSelect} />}
-    </div>
-    <div className="workbench-panel settings-panel" hidden={panel !== 'settings'}>
-      <div className="pane-switch" role="group" aria-label="Settings pages">
-        <button type="button" aria-pressed={settingsPage === 'colours'} onClick={() => onSettingsPage('colours')}>Language colours</button>
-        <button type="button" aria-pressed={settingsPage === 'layout'} onClick={() => onSettingsPage('layout')}>View layout</button>
+  const projectsDirty = sourceDirty || Object.keys(layoutDrafts ?? {}).length > 0
+  return <aside id="workbench-sidebar" className="workbench-sidebar" aria-label="Model navigator"
+    data-collapsed={hidden || undefined} aria-hidden={hidden || undefined} inert={hidden}>
+    <div className="workbench-sidebar-content">
+      <nav className="workbench-tabs" aria-label="Navigation panels">
+        {panels.map(([name, title, Icon]) => {
+          const changed = name === 'projects' ? projectsDirty : name === 'settings' && paletteDirty
+          return <button type="button" key={name} aria-pressed={panel === name}
+            aria-label={name === 'elements' ? 'Model elements' : title}
+            aria-description={changed ? 'Unsaved changes' : undefined} onClick={() => onPanel(name)}>
+            <Icon size={14} aria-hidden="true" /><span>{title}</span>{changed && <UnsavedDot />}
+          </button>
+        })}
+      </nav>
+      <div className="workbench-panel projects-panel" hidden={panel !== 'projects'}>
+        {projectBar}
+        <ProjectMap files={files} file={file} view={view} actions={modelActions} views={catalog} viewError={catalogError}
+          layoutDrafts={layoutDrafts} sourceDirtyFile={sourceDirty ? file?.name : undefined} onOpen={onOpenFile} />
       </div>
-      <div hidden={settingsPage !== 'colours'}>{colourSettings}</div>
-      <div hidden={settingsPage !== 'layout'}><div className="layout-settings-host" ref={settingsHost} />
-        <p className="explorer-message layout-empty">Open a saved diagram’s View settings to edit its layout.</p>
+      <div className="workbench-panel elements-panel" hidden={!openElements}>
+        <Sidebar canDrag={canDragElements} model={file?.model ?? null} fileKey={file?.name ?? ''} selectedId={selectedId}
+          onSelect={onSelect} partsOnly={partsOnly} controls={
+            <ActionMenu label="Element actions" iconOnly>
+              <button type="button" aria-pressed={partsOnly} onClick={() => setPartsOnly(value => !value)}>
+                {partsOnly ? 'Show all elements' : 'Show parts and items'}
+              </button>
+              <button disabled={!actions || !selected || !canPlaceElement(selected)}
+                onClick={() => selected && actions?.addElement(selected.id)}><Box size={14} /> Add selected to view</button>
+            </ActionMenu>
+          } />
+        {openElements && file && <Relationships model={file.model} onSelect={onSelect} />}
+      </div>
+      <div className="workbench-panel settings-panel" hidden={panel !== 'settings'}>
+        <div className="pane-switch" role="group" aria-label="Settings pages">
+          <button type="button" aria-pressed={settingsPage === 'colours'} onClick={() => onSettingsPage('colours')}
+            aria-description={paletteDirty ? 'Unsaved colour changes' : undefined}>Language colours
+            {paletteDirty && <UnsavedDot />}
+          </button>
+          <button type="button" aria-pressed={settingsPage === 'layout'} onClick={() => onSettingsPage('layout')}>Layout properties</button>
+        </div>
+        <div hidden={settingsPage !== 'colours'}>{colourSettings}</div>
+        <div hidden={settingsPage !== 'layout'}><div className="layout-settings-host" ref={settingsHost} />
+          <p className="explorer-message layout-empty">Open a saved diagram to edit its layout properties.</p>
+        </div>
       </div>
     </div>
-    {panel !== 'settings' && <section className={'element-properties' + (inspector ? ' has-selection' : '')}
-      aria-label="Element properties">{inspector || <p className="explorer-message">Select an element to see its properties.</p>}</section>}
   </aside>
 }
 

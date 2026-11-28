@@ -51,6 +51,7 @@ test('source validation highlights drafts, explains fixes and rejects obsolete r
         } },
       ] } },
       linkedElement: { id: 'rover' }, onCaretElement: id => { caretElement = id },
+      diagramVisible: true, propertiesAvailable: true, propertiesOpen: false, onToggleProperties: () => {},
       jumpLine: null, jumpNonce: 0, saving: false,
       onSave: async () => { saves++ }, onDirtyChange: () => {},
       onOpenHistory: () => {}, onDownload: () => {},
@@ -72,7 +73,8 @@ test('source validation highlights drafts, explains fixes and rejects obsolete r
     }
     await act(async () => root.render(createElement(SourceView, { ...props, key: 'project-one/Example.sysml' })))
     await pause(550)
-    assert.equal(host.querySelector('.cm-linked-declaration')?.textContent, 'rover')
+    assert.equal(host.querySelector('.cm-linked-declaration')?.textContent, 'part rover : Vehcle;')
+    assert.equal(caretElement, undefined, 'revealing a declaration does not report an editor-driven selection')
     assert.equal(requests.length, 1, 'initial source is checked automatically')
     assert.equal(requests[0].content, source)
     await act(async () => requests[0].resolve([diagnostic]))

@@ -187,3 +187,58 @@ func TestSceneAndSVGAcceptSignedCanvasPastTenThousand(t *testing.T) {
 		}
 	}
 }
+
+func TestMovedConnectorLabelRoundTripsAndUsesTheRenderedPath(t *testing.T) {
+	cfg := presentationFixture()
+	cfg.Views[0].Edges[0].LabelMoved = true
+	cfg.Views[0].Edges[0].Label = [2]float64{350, 225}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := parsed.Views[0]
+	if !v.Edges[0].LabelMoved {
+		t.Fatal("layout lost the manual label flag")
+	}
+	scene, err := BuildScene(presentationSource, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leader := scene.Edges[0].LabelLeader
+	if leader == nil || (*leader)[0][0] != 350 || (*leader)[0][1] != 180 ||
+		!strings.Contains(scene.Edges[0].SVG, `class="relationship-label-leader"`) {
+		t.Fatalf("label did not lead back to the rendered connector: %v", leader)
+	}
+	svg, err := Render(presentationSource, v)
+	if err != nil || string(svg) != scene.SVG {
+		t.Fatal("SVG and preview use different drawings", err)
+	}
+}
+
+func TestSavedDependencyArrowApproachesTheCardPerpendicularly(t *testing.T) {
+	source := strings.Replace(presentationSource, "flow <'FLOW'> transfer from a.io.value to b.io.value;", "dependency <'FLOW'> trace from a to b;", 1)
+	config := presentationFixture()
+	view := config.Views[0]
+	view.Styles = config.Styles
+	edge := &view.Edges[0]
+	edge.Points = [][2]float64{{270, 180}, {430, 180}, {430, 265}}
+	scene, err := BuildScene(source, view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	points := scene.Edges[0].Points
+	if points[len(points)-1] != [2]float64{430, 265} || points[len(points)-2] != [2]float64{418, 265} {
+		t.Fatalf("expected the marker to enter from the left: %v", points)
+	}
+	if edge.Points[len(edge.Points)-2] != [2]float64{430, 180} {
+		t.Fatal("rendering changed the stored layout")
+	}
+	export, err := Render(source, view)
+	if err != nil || string(export) != scene.SVG {
+		t.Fatalf("browser and export differ: %v", err)
+	}
+}

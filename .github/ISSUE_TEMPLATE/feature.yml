@@ -1,0 +1,16 @@
+name: Suggest an improvement
+description: Describe a SkyView workflow you want to improve.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What are you trying to do?
+      description: Describe your workflow and where you get stuck.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would help?
+      description: Describe the result you want. Add a small example or a screenshot if it helps explain the idea.

@@ -6,6 +6,7 @@ import { useModelViews, type ModelViews } from '../modelViews'
 import type { FileInfo, FileResponse, SysmlModel } from '../types'
 import { displayName } from '../utils'
 import { layoutDirty, type LayoutDraft } from '../diagramTabs'
+import UnsavedDot from './UnsavedDot'
 
 export type OpenModel = (file: string, view?: string | null, element?: string, newTab?: boolean) => void
 type ProjectDiagram = { file: string; view?: string; element?: string }
@@ -26,7 +27,7 @@ function tabActions(target: ProjectDiagram, onMenu: (menu: ProjectMenu) => void)
   }
 }
 
-function ModelEntry({ name, path, active, view, views, viewError, draft, onOpen, onMenu }: {
+function ModelEntry({ name, path, active, view, views, viewError, draft, sourceDirty, onOpen, onMenu }: {
   name: string
   path: string
   active?: FileResponse
@@ -34,6 +35,7 @@ function ModelEntry({ name, path, active, view, views, viewError, draft, onOpen,
   views?: ModelViews
   viewError?: string
   draft?: LayoutDraft
+  sourceDirty: boolean
   onOpen: OpenModel
   onMenu: (menu: ProjectMenu) => void
 }) {
@@ -64,12 +66,15 @@ function ModelEntry({ name, path, active, view, views, viewError, draft, onOpen,
       <button type="button" className="project-file explorer-row" title={path}
         data-active={Boolean(active)} onClick={() => { setOpen(true); onOpen(path) }} {...tabActions({ file: path }, onMenu)}>
         <FileCode2 size={15} /><span>{name}</span>
-        {draft && <i className="project-view-dirty" role="img" aria-label="Unsaved views" title="Unsaved views" />}
+        {(sourceDirty || draft) && <UnsavedDot label={sourceDirty && draft ? 'Unsaved source and views'
+          : sourceDirty ? 'Unsaved source edits' : 'Unsaved views'} />}
       </button>
     </div>
     {open && <div className="project-tree-level">
       <details open>
-        <summary className="explorer-row"><PanelsTopLeft size={14} /> Views</summary>
+        <summary className="explorer-row"><PanelsTopLeft size={14} /> Views
+          {draft && <UnsavedDot label="Unsaved views" />}
+        </summary>
         <div className="project-tree-level">
           <button type="button" className="explorer-row" onClick={() => onOpen(path)} {...tabActions({ file: path }, onMenu)}
             aria-current={active && view === null ? 'page' : undefined}><Network size={14} /><span>Model diagram</span></button>
@@ -78,7 +83,7 @@ function ModelEntry({ name, path, active, view, views, viewError, draft, onOpen,
             aria-current={active && view === item.id ? 'page' : undefined}
             onClick={() => onOpen(path, item.id)} {...tabActions({ file: path, view: item.id }, onMenu)}>
             <PanelsTopLeft size={14} /><span>{item.title}</span>
-            {layoutDirty(draft, item.id) && <i className="project-view-dirty" role="img" aria-label="Unsaved view" title="Unsaved view" />}
+            {layoutDirty(draft, item.id) && <UnsavedDot label="Unsaved view" />}
           </button>)}
           {catalogError && <p className="explorer-message" role="status">{catalogError}</p>}
           {!availableViews && !catalogError && <p className="explorer-message">Loading saved views…</p>}
@@ -122,17 +127,20 @@ function Packages({ model, file, onPick, onMenu }: {
   </details> : null
 }
 
-export default function ProjectMap({ files, file, view, views, viewError, layoutDrafts, onOpen, actions }: {
+export default function ProjectMap({ files, file, view, views, viewError, layoutDrafts, sourceDirtyFile, onOpen, actions }: {
   files: FileInfo[]
   file: FileResponse | null
   view: string | null
   views?: ModelViews
   viewError?: string
   layoutDrafts?: Record<string, LayoutDraft>
+  sourceDirtyFile?: string
   onOpen: OpenModel
   actions?: ReactNode
 }) {
   const [menu, setMenu] = useState<ProjectMenu | null>(null)
+  const changedFiles = Object.keys(layoutDrafts ?? {})
+  if (sourceDirtyFile) changedFiles.push(sourceDirtyFile)
   const menuRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!menu) return
@@ -158,13 +166,16 @@ export default function ProjectMap({ files, file, view, views, viewError, layout
     const directories = [...new Set(names.filter(name => name.includes('/')).map(name => name.split('/')[0]))].sort()
     return <>
       {directories.map(name => <details key={name} open>
-        <summary className="explorer-row"><Folder size={15} /> {name}</summary>
+        <summary className="explorer-row"><Folder size={15} /> {name}
+          {changedFiles.some(path => path.startsWith(prefix + name + '/')) && <UnsavedDot label="Contains unsaved changes" />}
+        </summary>
         <div className="project-tree-level">{rowsAt(prefix + name + '/')}</div>
       </details>)}
       {names.filter(name => !name.includes('/')).sort().map(name => {
         const path = prefix + name
         return <ModelEntry key={path} name={name} path={path} active={file?.name === path ? file : undefined}
-          view={view} views={views} viewError={viewError} draft={layoutDrafts?.[path]} onOpen={onOpen} onMenu={setMenu} />
+          view={view} views={views} viewError={viewError} draft={layoutDrafts?.[path]}
+          sourceDirty={sourceDirtyFile === path} onOpen={onOpen} onMenu={setMenu} />
       })}
     </>
   }

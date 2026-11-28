@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Circle, Network, X } from 'lucide-react'
+import { Network, X } from 'lucide-react'
 import type { DiagramTab } from '../diagramTabs'
+import UnsavedDot from './UnsavedDot'
 
 export default function DiagramTabs({ tabs, active, dirty, onOpen, onClose }: {
  tabs: DiagramTab[]
@@ -57,7 +58,7 @@ export default function DiagramTabs({ tabs, active, dirty, onOpen, onClose }: {
        context(bounds.left, bounds.bottom, event.currentTarget)
       }}>
       <Network size={14} aria-hidden="true" /><span>{tab.title}</span>
-      {changed && <Circle className="diagram-tab-dirty" size={8} fill="currentColor" aria-hidden="true" />}
+      {changed && <UnsavedDot />}
      </button>
      <button className="diagram-tab-close" type="button" aria-label={'Close ' + tab.title} title="Close diagram"
       onClick={() => close([tab.key])}><X size={13} /></button>

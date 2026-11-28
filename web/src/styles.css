@@ -6,12 +6,14 @@
   --radius-lg: 18px;
   --topbar-h: 47px;
   --statusbar-h: 26px;
+  --unsaved-indicator: #a87500;
   --sidebar-w: 286px;
   --inspector-w: 348px;
   color-scheme: dark;
 }
 
 :root[data-theme="dark"] {
+  --unsaved-indicator: #fbbf24;
   --bg: #080b11;
   --bg-elev: #0d121b;
   --bg-panel: #111824;
@@ -185,11 +187,8 @@ a {
 .brand-mark {
   width: 32px;
   height: 32px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: var(--brand-background);
-  color: var(--brand-ink);
+  display: block;
+  flex: 0 0 auto;
 }
 
 .brand-text {
@@ -210,6 +209,22 @@ a {
   letter-spacing: 0.14em;
   color: var(--text-dim);
 }
+
+.brand-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 480px;
+  text-align: center;
+}
+
+.brand-intro-mark { display: block; }
+.brand-intro h1 { margin: 0; color: var(--text); font-size: 30px; letter-spacing: -.035em; }
+.brand-intro p { margin: 0; max-width: 100%; font-size: 13px; }
+.brand-intro .brand-intro-description { color: var(--text); font-weight: 600; }
+.brand-intro-purpose { color: var(--text-muted); }
+.welcome-state .brand-intro { margin-bottom: 16px; }
 
 .topbar-divider {
   width: 1px;
@@ -244,10 +259,14 @@ a {
   background: var(--success);
 }
 
-.save-dot.dirty {
-  background: var(--warning);
+.unsaved-dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--unsaved-indicator);
 }
-
 .save-dot.saving {
   background: var(--accent);
   animation: pulse 1s infinite;
@@ -286,6 +305,8 @@ a {
 .cmd-trigger {
   display: inline-flex;
   align-items: center;
+  width: clamp(190px, 27vw, 370px);
+  min-width: 0;
   gap: 8px;
   height: 34px;
   padding: 0 10px;
@@ -294,7 +315,11 @@ a {
   background: var(--bg-panel);
   color: var(--text-muted);
   font-size: 12px;
+  white-space: nowrap;
 }
+
+.cmd-trigger-label { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; }
+.cmd-trigger svg, .cmd-trigger .kbd { flex: 0 0 auto; }
 
 .cmd-trigger:hover {
   border-color: var(--border-strong);
@@ -314,31 +339,6 @@ a {
   font-size: 10px;
   color: var(--text-muted);
   line-height: 1.4;
-}
-
-.diag-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 9px;
-  border-radius: 99px;
-  border: 1px solid var(--border);
-  background: var(--bg-panel);
-  font-size: 11.5px;
-  color: var(--text-muted);
-}
-
-.diag-badge.has-errors {
-  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
-.diag-badge.has-warnings {
-  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
-  color: var(--warning);
-  background: var(--warning-soft);
 }
 
 /* ---------------------------------------------------------------- layout */
@@ -568,29 +568,12 @@ a {
   color: var(--text-dim);
 }
 
-.viewbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .content {
   flex: 1;
   min-height: 0;
   position: relative;
   display: flex;
   flex-direction: column;
-}
-
-.inspector {
-  width: var(--inspector-w);
-  flex: 0 0 auto;
-  border-left: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-panel) 75%, transparent);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  animation: slideIn 0.16s ease-out;
 }
 
 .inspector-head {
@@ -661,18 +644,6 @@ a {
   gap: 6px;
 }
 
-.inspector-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 30px;
-  color: var(--text-dim);
-  text-align: center;
-  font-size: 12.5px;
-}
 
 /* ---------------------------------------------------------------- controls */
 
@@ -2122,6 +2093,11 @@ a {
   color: var(--text);
   font-size: 12px;
 }
+.build-brand { display: flex; align-items: center; gap: 12px; }
+.build-brand .brand-mark { width: 44px; height: 44px; }
+.build-brand strong { font-size: 16px; }
+.build-brand p { margin: 3px 0 0; color: var(--text-muted); line-height: 1.4; }
+.build-purpose { margin: 12px 0; color: var(--text-muted); }
 .build-status-panel dl {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2167,17 +2143,13 @@ a {
   gap: 14px;
   color: var(--text-muted);
   font-size: 13px;
+  padding: 24px;
 }
 
-.loading-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #06121a;
-  box-shadow: 0 0 34px rgba(94, 234, 212, 0.25);
+.loading-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .section-title {
@@ -2277,15 +2249,6 @@ a {
   .topbar-meta .save-state {
     display: none;
   }
-  .inspector {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: min(340px, 86vw);
-    z-index: 30;
-    box-shadow: var(--shadow);
-  }
 }
 
 @media (max-width: 720px) {
@@ -2302,9 +2265,6 @@ a {
   .grid .col-doc {
     width: 40%;
   }
-  .cmd-trigger span {
-    display: none;
-  }
 }
 
 .shared-views { overflow: auto; padding: 20px; flex: 1; min-height: 0; }
@@ -2312,6 +2272,11 @@ a {
 .shared-view-svg { display: block; width: 100%; max-width: 1100px; background: white; }
 
 /* Source diagnostics share CodeMirror's range, hover and gutter implementation. */
+.source-editor .cm-line.cm-unsaved-line {
+  background-color: color-mix(in srgb, var(--unsaved-indicator) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--unsaved-indicator);
+}
+.source-draft-status { color: var(--unsaved-indicator); font-size: 11px; }
 button.diag-item { width: 100%; text-align: left; color: var(--text); background: none; border: 0; border-bottom: 1px solid var(--border); }
 button.diag-item:hover, button.diag-item:focus-visible { background: var(--bg-hover); }
 .diag-hint { display: block; margin-top: 3px; color: var(--text-muted); line-height: 1.4; }
@@ -2350,8 +2315,24 @@ button.diag-item:hover, button.diag-item:focus-visible { background: var(--bg-ho
 .native-diagram-node .react-flow__handle { width: 9px; height: 9px; background: #14b8a6; border: 1px solid #083344; opacity: .25; }
 .native-diagram-node:hover .react-flow__handle, .native-diagram-node.selected .react-flow__handle { opacity: 1; }
 .native-diagram-node .generic-handle { opacity: 0 !important; width: 1px; height: 1px; pointer-events: none; }
-.node-settings { display: none; position: absolute; right: 4px; top: 4px; border: 1px solid #a5adb5; border-radius: 4px; background: white; color: #273340; padding: 2px 5px; }
-.native-diagram-node:hover .node-settings, .native-diagram-node:focus-within .node-settings, .native-diagram-node.selected .node-settings { display: block; }
+.node-layout-lock {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #a16207;
+  padding: 0;
+  cursor: pointer;
+}
+.node-layout-lock[data-locked="true"] { color: #dc2626; }
+.node-layout-lock:hover svg { stroke-width: 2.5; }
+.node-layout-lock:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
 .native-node-loading { width: 224px; padding: 20px; border: 1px solid var(--border); background: var(--bg-panel); }
 
 .element-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; }

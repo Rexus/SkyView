@@ -4,6 +4,8 @@ import {
   CircleAlert,
   Code2,
   Link2,
+  Pin,
+  PinOff,
   Save,
   Trash2,
   X,
@@ -28,16 +30,20 @@ import {
 interface Props {
   model: SysmlModel
   element: SysmlElement
+  docked?: boolean
+  onToggleDock?: () => void
   onClose: () => void
   onPatch: (id: string, patch: ElementPatch) => Promise<boolean | void>
   onDelete: (id: string) => void
-  onShowInSource: (line: number) => void
+  onShowInSource: () => void
   onSelect: (id: string) => void
 }
 
 export default function Inspector({
   model,
   element,
+  docked,
+  onToggleDock,
   onClose,
   onPatch,
   onDelete,
@@ -57,15 +63,13 @@ export default function Inspector({
     setDoc(element.doc ?? '')
   }, [element.id, element.name, element.type, element.value, element.doc])
 
-  const isRoot = element.kind === 'root'
-  const isConnection = element.kind === 'connection'
   const isSatisfy = element.kind === 'satisfy'
   const isRequirement = element.kind === 'requirement'
   const capabilities = editCapabilities(element)
   const { name: canName, type: canType, value: canValue, doc: canDoc } = capabilities
   const constraints = isRequirement ? requirementConstraints(model, element) : []
   const verifications = isRequirement ? verificationCasesFor(model, element) : []
-  const hasEndpoints = ['connection', 'dependency', 'message', 'succession', 'first'].includes(element.kind)
+  const hasEndpoints = ['connection', 'dependency', 'flow', 'message', 'succession', 'first'].includes(element.kind)
   const diagCount = diagnosticsFor(model, element.id)
   const parent = byId(model, element.parentId)
   const satisfies = useMemo(
@@ -94,8 +98,10 @@ export default function Inspector({
     }
   }
 
+  const dockLabel = docked ? 'Float properties' : 'Dock properties'
+
   return (
-    <aside className="inspector">
+    <aside className="inspector" aria-label="Element properties" data-docked={docked || undefined}>
       <div className="inspector-head">
         <span
           className="kind-dot"
@@ -112,8 +118,12 @@ export default function Inspector({
           <h3>{displayName(element)}</h3>
           <div className="qname">{element.qname || 'root'}</div>
         </div>
-        <button className="icon-button" onClick={onClose} aria-label="Close inspector">
-          <X size={15} />
+        {onToggleDock && <button type="button" className="icon-button tooltip inspector-pin" onClick={onToggleDock}
+          aria-label="Dock properties" aria-pressed={!!docked} data-tip={dockLabel}>
+          {docked ? <PinOff size={15} aria-hidden="true" /> : <Pin size={15} aria-hidden="true" />}
+        </button>}
+        <button type="button" className="icon-button tooltip" onClick={onClose} aria-label="Close properties" data-tip="Close properties">
+          <X size={15} aria-hidden="true" />
         </button>
       </div>
 
@@ -322,7 +332,7 @@ export default function Inspector({
         <button className="btn btn-primary" onClick={save} disabled={!dirty || saving}>
           <Save size={13} /> {saving ? 'Saving…' : 'Save'}
         </button>
-        <button className="btn" onClick={() => onShowInSource(element.line)}>
+        <button className="btn" onClick={onShowInSource}>
           <Code2 size={13} /> Source
         </button>
         {capabilities.delete && (

@@ -1,14 +1,22 @@
 import {
+  Bell,
+  BookOpen,
   CircleAlert,
-  Command,
+  CircleDot,
+  Info,
   Moon,
+  Search,
   Sun,
   TriangleAlert,
   CircleHelp,
   UserRound,
 } from 'lucide-react'
+import type { BuildInfo } from '../about'
 import type { Diagnostic } from '../types'
-import { cx } from '../utils'
+import { plural } from '../utils'
+import BrandMark, { brandDescription } from './BrandMark'
+import ActionMenu from './ActionMenu'
+import UnsavedDot from './UnsavedDot'
 
 interface Props {
   workspaceHost: (host: HTMLDivElement | null) => void
@@ -16,28 +24,20 @@ interface Props {
   sourceDirty: boolean
   theme: 'dark' | 'light'
   account?: string
+  build?: BuildInfo
+  useMacShortcut: boolean
   diagnostics: Diagnostic[]
   onToggleTheme: () => void
   onOpenPalette: () => void
   onOpenHelp: () => void
-  onShowDiagnostics: () => void
+  onShowDiagnostic: (line: number) => void
 }
 
-function BrandMark() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M5.5 7.5h4.2M14.3 7.5h4.2M12 9.2v5.6M7 13h10"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <circle cx="5" cy="7.5" r="2" fill="currentColor" />
-      <circle cx="19" cy="7.5" r="2" fill="currentColor" />
-      <circle cx="12" cy="16.5" r="2" fill="currentColor" />
-    </svg>
-  )
-}
+const diagnosticKinds = [
+  { severity: 'error', name: 'error', icon: CircleAlert },
+  { severity: 'warning', name: 'warning', icon: TriangleAlert },
+  { severity: 'info', name: 'note', icon: Info },
+] as const
 
 export default function Header(props: Props) {
   const {
@@ -46,26 +46,31 @@ export default function Header(props: Props) {
     sourceDirty,
     theme,
     account,
+    build,
+    useMacShortcut,
     diagnostics,
     onToggleTheme,
     onOpenPalette,
     onOpenHelp,
-    onShowDiagnostics,
+    onShowDiagnostic,
   } = props
-  const errors = diagnostics.filter((d) => d.severity === 'error').length
-  const warnings = diagnostics.filter((d) => d.severity === 'warning').length
-  const diagClass = errors ? 'has-errors' : warnings ? 'has-warnings' : ''
+  const groups = diagnosticKinds.flatMap(kind => {
+    const issues = diagnostics.filter(item => item.severity === kind.severity)
+    return issues.length ? [{ ...kind, issues }] : []
+  })
+  const summary = groups.map(group => plural(group.issues.length, group.name)).join(' · ')
   const saveLabel = saving ? 'Saving…' : sourceDirty ? 'Unsaved changes' : 'Saved'
+  const releaseTag = build?.official ? build.tag : undefined
+  const releasesLink = build?.repository ? `${build.repository}/releases` : undefined
+  const releaseLink = releaseTag && releasesLink ? `${releasesLink}/tag/${encodeURIComponent(releaseTag)}` : releasesLink
 
   return (
     <header className="topbar">
-      <div className="brand">
-        <div className="brand-mark">
-          <BrandMark />
-        </div>
+      <div className="brand" title={brandDescription}>
+        <BrandMark />
         <div className="brand-text">
           <span className="brand-name">SkyView</span>
-          <span className="brand-sub">SysML v2 workbench</span>
+          <span className="brand-sub">SysML v2 design tool</span>
         </div>
       </div>
 
@@ -76,19 +81,52 @@ export default function Header(props: Props) {
 
       <div className="topbar-meta">
         {(saving || sourceDirty) && <span className="save-state" role="status">
-          <span className={cx('save-dot', saving && 'saving', sourceDirty && !saving && 'dirty')} />
+          {saving ? <span className="save-dot saving" /> : <UnsavedDot />}
           {saveLabel}
         </span>}
 
-        {!!(errors || warnings) && <button className={cx('diag-badge', diagClass)} onClick={onShowDiagnostics}>
-          {errors ? <CircleAlert size={13} /> : <TriangleAlert size={13} />}
-          <span>{errors ? errors + (errors === 1 ? ' error' : ' errors') : warnings + (warnings === 1 ? ' warning' : ' warnings')}</span>
-        </button>}
-
-        <button className="cmd-trigger" onClick={onOpenPalette}>
-          <Command size={13} />
-          <span>Search</span>
+        <button type="button" className="cmd-trigger" aria-label="Search" aria-haspopup="dialog"
+          aria-keyshortcuts="Control+K Meta+K" onClick={onOpenPalette}>
+          <Search size={15} aria-hidden="true" />
+          <span className="cmd-trigger-label">Search</span>
+          <kbd className="kbd" aria-hidden="true">{useMacShortcut ? '⌘ K' : 'Ctrl K'}</kbd>
         </button>
+
+        <ActionMenu className="header-menu header-issues" label={summary ? `Issues, ${summary}` : 'Issues'} iconOnly
+          trigger={<><CircleDot size={16} aria-hidden="true" />{groups.length > 0 && <span className="issue-count"
+            data-severity={groups[0].severity} aria-hidden="true">{diagnostics.length}</span>}</>}>
+          <div className="header-menu-heading">
+            <strong>Issues</strong>
+            {summary && <span>{summary}</span>}
+          </div>
+          {groups.length ? <ul className="header-menu-list">
+            {groups.flatMap(({ severity, name, issues, icon: Icon }) => issues.map((issue, index) => (
+              <li key={`${severity}-${index}`}>
+                <button type="button" onClick={() => onShowDiagnostic(issue.line)}>
+                  <Icon className={`diag-icon ${severity}`} size={14} aria-hidden="true" />
+                  <span>
+                    <span className="header-menu-detail">{name}{issue.line > 0 && ` · Line ${issue.line}`}</span>
+                    <span className="header-menu-message">{issue.message}</span>
+                  </span>
+                </button>
+              </li>
+            )))}
+          </ul> : <p className="header-menu-empty">No model issues.</p>}
+        </ActionMenu>
+
+        <ActionMenu className="header-menu header-notices" label="Notices" iconOnly
+          trigger={<Bell size={16} aria-hidden="true" />}>
+          <div className="header-menu-heading"><strong>Notices</strong></div>
+          {build && releaseLink ? <ul className="header-menu-list">
+            <li><a href={releaseLink} target="_blank" rel="noreferrer">
+              <BookOpen size={14} aria-hidden="true" />
+              <span>
+                <span className="header-menu-detail">SkyView {build.version}</span>
+                <span className="header-menu-message">{releaseTag ? 'Release notes' : 'Browse release history'}</span>
+              </span>
+            </a></li>
+          </ul> : <p className="header-menu-empty">Release information unavailable.</p>}
+        </ActionMenu>
 
         <button className="icon-button tooltip" data-tip="Toggle theme" aria-label="Toggle theme" onClick={onToggleTheme}>
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}

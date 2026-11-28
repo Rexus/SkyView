@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   CheckCheck,
   CircleAlert,
@@ -23,6 +23,7 @@ import {
 } from '../utils'
 
 interface Props {
+  historyControls?: ReactNode
   model: SysmlModel
   selectedId: string | null
   onSelect: (id: string) => void
@@ -101,6 +102,7 @@ export default function GridEditor(props: Props) {
   return (
     <>
       <div className="view-toolbar">
+        {props.historyControls}
         <div className="toolbar-search">
           <Search size={13} />
           <input

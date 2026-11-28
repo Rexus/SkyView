@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Code2, Download, Filter, Plus, Search, SlidersHorizontal } from 'lucide-react'
 import type { ElementPatch } from '../api'
 import type { SysmlModel } from '../types'
@@ -11,6 +11,7 @@ import Modal from './Modal'
 import RequirementTable, { RequirementLinks } from './RequirementTable'
 
 interface Props {
+ historyControls?: ReactNode
  fileName: string
  model: SysmlModel
  selectedId: string | null
@@ -88,7 +89,7 @@ function RequirementDetails({ row, onClose, onSelect, onPatch }: Pick<Props, 'on
 }
 
 export default function RequirementsView({ fileName, model, selectedId, onSelect, onPatch, onAddRequirement,
- onAddSatisfy, onDelete, onShowInSource }: Props) {
+ onAddSatisfy, onDelete, onShowInSource, historyControls }: Props) {
  const [query, setQuery] = useState('')
  const [coverage, setCoverage] = useState<Coverage>('all')
  const [columns, setColumns] = useState(initialColumns)
@@ -142,6 +143,7 @@ export default function RequirementsView({ fileName, model, selectedId, onSelect
  }
  return <section className="requirements-workbench" aria-label="Requirements workbench">
   <div className="view-toolbar requirements-titlebar">
+   {historyControls}
    <strong title={fileName}>{fileName.split('/').at(-1)}</strong>
    <span className="requirements-count" role="status">{filtering ? `${filtered.length} of ` : ''}{rows.length} {rows.length === 1 ? 'requirement' : 'requirements'}</span>
    <span className="grow" />

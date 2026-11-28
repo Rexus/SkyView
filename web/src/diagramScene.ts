@@ -1,6 +1,6 @@
 export interface ScenePort { id: string; name: string; type: string; y: number }
 export interface SceneNode { key: string; elementId?: string; annotation?: boolean; parent?: string; x: number; y: number; width: number; height: number; svg: string; ports: ScenePort[] }
-export interface SceneEdge { key: string; elementId: string; from: string; to: string; points: [number, number][]; label: string; svg: string }
+export interface SceneEdge { key: string; elementId: string; from: string; to: string; points: [number, number][]; label: string; svg: string; labelLeader?: [[number, number], [number, number]] }
 export interface DiagramScene { svg: string; resources: string; nodes: SceneNode[]; edges: SceneEdge[] }
 export const sceneNodeId = (node: SceneNode) => node.elementId || `annotation:${node.key}`
 export function parentFirst(nodes: SceneNode[]): SceneNode[] {

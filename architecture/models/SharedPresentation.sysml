@@ -8,13 +8,17 @@ package SharedPresentation {
         attribute identitiesPreserved : Boolean;
         attribute geometryPreserved : Boolean;
         attribute lockedInteriorPreserved : Boolean;
+        attribute pinnedPlacementPreserved : Boolean;
         attribute nativeMeaningPreserved : Boolean;
         attribute projectLanguageColoursShared : Boolean;
     }
     part def ViewEditor {
         doc /* Select native parts/items and relationships. Add annotation boundaries; drag groups,
-            choose per-container Flow, Horizontal, Vertical or Grid; lock interiors; preview and save.
-            Auto layout arranges unlocked interiors before enclosing groups and outside elements. */
+            choose per-container Flow, Horizontal, Vertical or Grid; pin boxes relative to their
+            containing layout, lock interiors; preview and save. Auto layout arranges unlocked
+            interiors around pinned siblings before arranging enclosing groups. Independent
+            connector attachments reserve separate positions. Moved relationship labels retain
+            their placement and a leader shows which connector they identify. */
     }
     part def ViewStore {
         doc /* Versioned source-adjacent JSON owns selection, geometry and local arrangement settings.
@@ -46,9 +50,10 @@ package SharedPresentation {
     }
     requirement lockedInteriors {
         subject presentation : Presentation;
-        doc /* SP-03: Auto layout may translate a locked boundary as a unit but shall preserve
-            descendant relative coordinates, dimensions and internal connector routes. */
-        require constraint { presentation.lockedInteriorPreserved }
+        doc /* SP-03: Auto layout shall preserve a pinned box's placement relative to its container
+            and arrange movable siblings around it. A boundary with only its interior locked may
+            translate as a unit, preserving descendant relative coordinates, dimensions and internal routes. */
+        require constraint { presentation.lockedInteriorPreserved and presentation.pinnedPlacementPreserved }
     }
     requirement commonLanguageColours {
         subject presentation : Presentation;

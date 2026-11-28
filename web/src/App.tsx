@@ -15,7 +15,6 @@ import {
   Download,
   FileCode2,
   FilePlus2,
-  FolderOpen,
   History,
   LayoutGrid,
   Link2,
@@ -70,11 +69,13 @@ import {
   safeImportName,
 } from './utils'
 import Header from './components/Header'
+import { BrandIntro } from './components/BrandMark'
 import ActionMenu from './components/ActionMenu'
 import WorkbenchSidebar, { type NavigatorPanel, type SettingsPage } from './components/WorkbenchSidebar'
 import { useModelViews, type ModelViews } from './modelViews'
 import { diagramDestinations, diagramTabKey, discardLayouts, layoutDirty, type DiagramTab, type LayoutDraft } from './diagramTabs'
 import type { SharedView, ViewConfig } from './sharedViews'
+import { emptyMoves, sameLayout, type ViewHistories } from './layoutMoveHistory'
 import type { CustomViewActions } from './components/CustomViews'
 import GridEditor from './components/GridEditor'
 import DiagramView from './components/DiagramView'
@@ -84,6 +85,7 @@ import SourceView from './components/SourceView'
 import ModelPanes from './components/ModelPanes'
 import DiagramWorkspace from './components/DiagramWorkspace'
 import DiagramTabs from './components/DiagramTabs'
+import UnsavedDot from './components/UnsavedDot'
 import Modal from './components/Modal'
 import Inspector from './components/Inspector'
 import CommandPalette, { type PaletteCommand } from './components/CommandPalette'
@@ -162,8 +164,9 @@ export default function App() {
   const openDiagramsRef = useRef(openDiagrams)
   openDiagramsRef.current = openDiagrams
   const [layoutDrafts, setLayoutDrafts] = useState<Record<string, LayoutDraft>>({})
+  const [layoutHistories, setLayoutHistories] = useState<Record<string, ViewHistories>>({})
   const [layoutSaving, setLayoutSaving] = useState(false)
-  const modelViews = useModelViews(file?.name)
+  const modelViews = useModelViews(file?.name, true)
   const currentLayout = file ? layoutDrafts[file.name] : undefined
   const diagramChoices = currentLayout?.config.views ?? modelViews.data?.config.views
   useEffect(() => {
@@ -189,18 +192,15 @@ export default function App() {
       const config = update(drafts[name]?.config ?? base.config)
       const next = { ...drafts }
       if (JSON.stringify(config) === JSON.stringify(base.config)) delete next[name]
-      else next[name] = { base, config }
+      else next[name] = { base, config, revision: file.revision }
       return next
     })
   }
   const acceptLayouts = (name: string, saved: ModelViews) => {
     modelViews.publish(name, saved)
     setLayoutDrafts(drafts => {
-      const draft = drafts[name]
-      if (!draft) return drafts
       const next = { ...drafts }
-      if (draft.config === saved.config || JSON.stringify(draft.config) === JSON.stringify(saved.config)) delete next[name]
-      else next[name] = { base: saved, config: draft.config }
+      delete next[name]
       return next
     })
   }
@@ -263,14 +263,24 @@ export default function App() {
     setSidebarVisible(true)
   }, [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [propertiesDocked, setPropertiesDocked] = useState(false)
+  const [propertiesOpen, setPropertiesOpen] = useState(false)
+  const [sourcePropertiesOpen, setSourcePropertiesOpen] = useState(false)
   const [sourceFocus, setSourceFocus] = useState<{ id: string } | null>(null)
+  const [jumpLine, setJumpLine] = useState<number | null>(null)
+  const [jumpNonce, setJumpNonce] = useState(0)
   const selectElement = useCallback((id: string | null) => {
     setSelectedId(id)
+    setPropertiesOpen(Boolean(id))
+    if (!id) setSourcePropertiesOpen(false)
     setSourceFocus(id ? { id } : null)
+    setJumpLine(null)
   }, [])
   const selectFromSource = useCallback((id: string | null) => {
     setSelectedId(id)
     setSourceFocus(null)
+    if (!id || activeDraft.current.tab === 'source') setPropertiesOpen(false)
+    if (!id) setSourcePropertiesOpen(false)
   }, [])
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('skyview-workbench-theme')
@@ -279,8 +289,10 @@ export default function App() {
   const [saving, setSaving] = useState(false)
   const [sourceDirty, setSourceDirty] = useState(false)
   const viewDirty = Object.keys(layoutDrafts).length > 0
-  const activeDraft = useRef({ tab, sourceDirty, viewDirty, saving: saving || layoutSaving })
-  activeDraft.current = { tab, sourceDirty, viewDirty, saving: saving || layoutSaving }
+  const inspectorOpen = tab === 'source' ? sourcePropertiesOpen : propertiesOpen
+  const setInspectorOpen = tab === 'source' ? setSourcePropertiesOpen : setPropertiesOpen
+  const activeDraft = useRef({ tab, sourceDirty, viewDirty, saving: saving || layoutSaving, selectedId, inspectorOpen })
+  activeDraft.current = { tab, sourceDirty, viewDirty, saving: saving || layoutSaving, selectedId, inspectorOpen }
   useEffect(() => {
     if (!sourceDirty && !viewDirty) return
     const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
@@ -294,18 +306,20 @@ export default function App() {
       if (current.saving || !window.confirm('Discard unsaved source edits?')) return false
       setSourceDirty(false)
     }
+    if (current.tab !== next) {
+      setSourcePropertiesOpen(false)
+      setJumpLine(null)
+      if (showsSource(next) && current.inspectorOpen && current.selectedId) setSourceFocus({ id: current.selectedId })
+    }
     setActiveTab(next)
     return true
   }, [])
   const openPanel = (panel: NavigatorPanel) => {
-    if (panel === 'settings') setSettingsPage('colours')
     setSidebarTab(panel)
   }
   const [toasts, setToasts] = useState<Toast[]>([])
   const [modal, setModal] = useState<ModalState>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [jumpLine, setJumpLine] = useState<number | null>(null)
-  const [jumpNonce, setJumpNonce] = useState(0)
   const [dragActive, setDragActive] = useState(false)
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const [redoStack, setRedoStack] = useState<Snapshot[]>([])
@@ -319,6 +333,33 @@ export default function App() {
       setToasts((current) => current.filter((t) => t.id !== id))
     }, 4500)
   }, [])
+
+  const checkedAutosaves = useRef(new Set<string>())
+  useEffect(() => {
+    const base = modelViews.data
+    if (!file || !base || checkedAutosaves.current.has(file.name)) return
+    checkedAutosaves.current.add(file.name)
+    if (base.draftError) pushToast('error', base.draftError)
+    const config = base.draft
+    if (config) setLayoutDrafts(current => current[file.name] ? current : {
+      ...current, [file.name]: { base, config, revision: file.revision, recovered: true },
+    })
+  }, [file, modelViews.data, pushToast])
+
+  const lastDrafts = useRef<Record<string, LayoutDraft>>({})
+  const autosaveLayout = modelViews.autosave
+  useEffect(() => {
+    const previous = lastDrafts.current
+    lastDrafts.current = layoutDrafts
+    for (const name of new Set([...Object.keys(previous), ...Object.keys(layoutDrafts)])) {
+      const draft = layoutDrafts[name]
+      if (draft === previous[name] || draft?.recovered) continue
+      const state = draft ?? previous[name]
+      void autosaveLayout(name, state.revision, state.base.etag, draft?.config).catch(error => {
+        if (lastDrafts.current[name] === draft) pushToast('error', `Diagram autosave for ${name} failed. ${error.message}`)
+      })
+    }
+  }, [layoutDrafts, autosaveLayout, pushToast])
 
   const refreshFiles = useCallback(async () => {
     try {
@@ -352,7 +393,10 @@ export default function App() {
       if (changingModel || current.tab !== 'split') setSourceDirty(false)
       const scope = view === null ? element : undefined
       chooseDiagramView(view, name, { scope, title: scope && doc ? displayName(byId(doc.model, scope)) : undefined, newTab })
-      if (current.tab !== 'split') setActiveTab('diagram')
+      if (current.tab !== 'split') {
+        setSourcePropertiesOpen(false)
+        setActiveTab('diagram')
+      }
       return true
     } catch (err) {
       if (request === openSequence.current) pushToast('error', err instanceof Error ? err.message : String(err))
@@ -423,9 +467,9 @@ export default function App() {
 
   useEffect(() => {
     if (file && selectedId && !byId(file.model, selectedId)) {
-      setSelectedId(null)
+      selectElement(null)
     }
-  }, [file, selectedId])
+  }, [file, selectedId, selectElement])
 
   const selectedElement = file && selectedId ? byId(file.model, selectedId) : undefined
 
@@ -485,11 +529,24 @@ export default function App() {
     const previousIndex = openDiagrams.findIndex(item => item.key === activeDiagram)
     const next = closingActive ? remaining[Math.min(Math.max(0, previousIndex - 1), remaining.length - 1)] : undefined
     const sourceWillClose = !!next && next.file !== file?.name && sourceDirty
-    const discardsView = removed.some(item => layoutDirty(layoutDrafts[item.file], item.view))
-    if ((sourceWillClose || discardsView) && !window.confirm('Discard unsaved ' + draftNames(sourceWillClose, discardsView) + '?')) return
+    const discardsView = removed.filter(item => layoutDirty(layoutDrafts[item.file], item.view))
+    if ((sourceWillClose || discardsView.length) && !window.confirm('Discard unsaved ' + draftNames(sourceWillClose, discardsView.length > 0) + '?')) return
     if (next && !await loadFile(next.file, next.view, next.scope)) return
     if (closingActive && !next) chooseDiagramView(null, file?.name, { visible: false })
     setOpenDiagrams(tabs => tabs.filter(item => !closing.has(item.key)))
+    setLayoutHistories(histories => {
+      const left = { ...histories }
+      for (const { file, view } of discardsView) {
+        const stacks = view ? left[file]?.[view] : undefined
+        if (!view || !stacks) continue
+        const saved = layoutDrafts[file]?.base.config.views.find(item => item.id === view)
+        let keep = stacks.undo.length
+        while (keep && !sameLayout(stacks.undo[keep - 1].after, saved)) keep--
+        const undo = stacks.undo.slice(0, keep)
+        left[file] = { ...left[file], [view]: { ...stacks, ...emptyMoves, undo } }
+      }
+      return left
+    })
     setLayoutDrafts(drafts => {
       const left = { ...drafts }
       for (const name of new Set(removed.map(item => item.file))) {
@@ -499,7 +556,7 @@ export default function App() {
         if (!ids.size) continue
         const config = discardLayouts(draft.config, draft.base.config, ids)
         if (JSON.stringify(config) === JSON.stringify(draft.base.config)) delete left[name]
-        else left[name] = { ...draft, config }
+        else left[name] = { ...draft, config, recovered: false }
       }
       return left
     })
@@ -536,20 +593,22 @@ export default function App() {
     await deleteFile(file.name)
     setOpenDiagrams(tabs => tabs.filter(item => item.file !== file.name))
     setLayoutDrafts(drafts => { const next = { ...drafts }; delete next[file.name]; return next })
+    setLayoutHistories(histories => { const next = { ...histories }; delete next[file.name]; return next })
+    checkedAutosaves.current.delete(file.name)
     const fs = await listFiles()
     setFiles(fs)
     if (fs.length > 0) {
       await loadFile(fs[0].name)
     } else {
       setFile(null)
-      setSelectedId(null)
+      selectElement(null)
       setSourceDirty(false)
       setUndoStack([])
       setRedoStack([])
       chooseDiagramView(null, '')
     }
     pushToast('success', `Deleted ${file.name}`)
-  }, [file, pushToast, chooseDiagramView, loadFile])
+  }, [file, pushToast, chooseDiagramView, loadFile, selectElement])
 
   const handlePatch = useCallback(
     async (id: string, patch: ElementPatch) => {
@@ -566,9 +625,9 @@ export default function App() {
             const next = resp.model.elements.find(
               (e) => e.name === patch.name && e.parentId === before.parentId,
             )
-            setSelectedId(next ? next.id : null)
+            selectElement(next?.id ?? null)
           } else {
-            setSelectedId(null)
+            selectElement(null)
           }
         }
         void refreshFiles()
@@ -578,7 +637,7 @@ export default function App() {
         return false
       }
     },
-    [file, selectedId, pushToast, refreshFiles, recordUndo, sourceBusy],
+    [file, selectedId, pushToast, refreshFiles, recordUndo, sourceBusy, selectElement],
   )
 
   const handleAddElement = useCallback(
@@ -595,11 +654,11 @@ export default function App() {
       const created = resp.model.elements.find(
         (e) => e.parentId === el.parent && e.name === el.name && e.kind === el.kind,
       )
-      if (created) setSelectedId(created.id)
+      if (created) selectElement(created.id)
       await refreshFiles()
       pushToast('success', `Added ${el.kind} ${el.name}`)
     },
-    [file, selectedId, pushToast, refreshFiles, recordUndo],
+    [file, selectedId, pushToast, refreshFiles, recordUndo, selectElement],
   )
 
   const handleAddConnection = useCallback(
@@ -616,11 +675,11 @@ export default function App() {
       const created = [...resp.model.elements]
         .reverse()
         .find((e) => e.kind === 'connection' && e.parentId === conn.parent)
-      if (created) setSelectedId(created.id)
+      if (created) selectElement(created.id)
       await refreshFiles()
       pushToast('success', 'Connection added')
     },
-    [file, selectedId, pushToast, refreshFiles, recordUndo],
+    [file, selectedId, pushToast, refreshFiles, recordUndo, selectElement],
   )
 
   const pendingConnection = useRef(false)
@@ -661,11 +720,11 @@ export default function App() {
       const created = [...resp.model.elements]
         .reverse()
         .find((e) => e.kind === 'satisfy' && e.parentId === link.parent)
-      if (created) setSelectedId(created.id)
+      if (created) selectElement(created.id)
       await refreshFiles()
       pushToast('success', 'Satisfy link added')
     },
-    [file, selectedId, pushToast, refreshFiles, recordUndo],
+    [file, selectedId, pushToast, refreshFiles, recordUndo, selectElement],
   )
 
   const confirmDeleteElement = useCallback(
@@ -679,11 +738,11 @@ export default function App() {
       const resp = await deleteElement(file.name, id)
       recordUndo(oldContent, oldSelected)
       setFile(resp)
-      setSelectedId(null)
+      selectElement(null)
       await refreshFiles()
       pushToast('success', 'Element deleted')
     },
-    [file, selectedId, pushToast, refreshFiles, recordUndo],
+    [file, selectedId, pushToast, refreshFiles, recordUndo, selectElement],
   )
 
   const handleSaveSource = useCallback(
@@ -738,7 +797,9 @@ export default function App() {
     [file, selectedId, pushToast, refreshFiles, recordUndo],
   )
 
-  const undoMove = showsDiagram(tab) ? customActions?.undoMove : undefined
+  const viewActions = showsDiagram(tab) ? customActions : null
+  const undoMove = viewActions?.undoMove
+  const redoMove = viewActions?.redoMove
   const undo = useCallback(async () => {
     if (layoutSaving) return
     if (undoMove) { await undoMove(); return }
@@ -755,7 +816,7 @@ export default function App() {
       setRedoStack((prev) => [...prev.slice(-(MAX_UNDO - 1)), current])
       setUndoStack((prev) => prev.slice(0, -1))
       setFile(resp)
-      setSelectedId(
+      selectElement(
         snapshot.selectedId && byId(resp.model, snapshot.selectedId) ? snapshot.selectedId : null,
       )
       void refreshFiles()
@@ -765,9 +826,11 @@ export default function App() {
     } finally {
       setSaving(false)
     }
-  }, [file, selectedId, undoStack, pushToast, refreshFiles, sourceBusy, layoutSaving, undoMove])
+  }, [file, selectedId, undoStack, pushToast, refreshFiles, sourceBusy, layoutSaving, undoMove, selectElement])
 
   const redo = useCallback(async () => {
+    if (layoutSaving) return
+    if (redoMove) { await redoMove(); return }
     if (!file || sourceBusy()) return
     const snapshot = redoStack[redoStack.length - 1]
     if (!snapshot) {
@@ -781,7 +844,7 @@ export default function App() {
       setUndoStack((prev) => [...prev.slice(-(MAX_UNDO - 1)), current])
       setRedoStack((prev) => prev.slice(0, -1))
       setFile(resp)
-      setSelectedId(
+      selectElement(
         snapshot.selectedId && byId(resp.model, snapshot.selectedId) ? snapshot.selectedId : null,
       )
       void refreshFiles()
@@ -791,7 +854,7 @@ export default function App() {
     } finally {
       setSaving(false)
     }
-  }, [file, selectedId, redoStack, pushToast, refreshFiles, sourceBusy])
+  }, [file, selectedId, redoStack, pushToast, refreshFiles, sourceBusy, layoutSaving, redoMove, selectElement])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -825,9 +888,22 @@ export default function App() {
       return
     }
     if (!showsSource(activeDraft.current.tab) && !setTab('source')) return
+    setSourceFocus(null)
     setJumpLine(line)
     setJumpNonce((n) => n + 1)
   }, [pushToast, setTab])
+
+  const showSelectedDeclaration = () => {
+    if (!selectedElement) return
+    const span = selectedElement.spans?.decl
+    if (selectedElement.implicit || !span || span.end <= span.start || sourceDirty) {
+      handleShowInSource(selectedElement.line)
+      return
+    }
+    if (!showsSource(tab) && !setTab('source')) return
+    setJumpLine(null)
+    setSourceFocus({ id: selectedElement.id })
+  }
 
   const handleDownload = useCallback(() => {
     if (!file) return
@@ -1034,7 +1110,7 @@ export default function App() {
             />
           ),
           run: () => {
-            setSelectedId(el.id)
+            selectElement(el.id)
             setTab('grid')
           },
         })
@@ -1045,6 +1121,7 @@ export default function App() {
     theme,
     file,
     selectedId,
+    selectElement,
     handleDownload,
     openAddElement,
     openAddConnection,
@@ -1060,6 +1137,27 @@ export default function App() {
   const reqCount = requirementsCount(file)
   const errors = file?.diagnostics.filter((d) => d.severity === 'error').length ?? 0
   const warnings = file?.diagnostics.filter((d) => d.severity === 'warning').length ?? 0
+
+  const historyControls = (
+    <div className="view-history" role="group" aria-label="Edit history">
+      <button
+        className="icon-button tooltip"
+        data-tip="Undo" aria-label="Undo"
+        onClick={() => void undo()}
+        disabled={saving || layoutSaving || (undoMove ? viewActions?.moveHistoryBusy : undoStack.length === 0 || sourceDirty)}
+      >
+        <Undo2 size={15} />
+      </button>
+      <button
+        className="icon-button tooltip"
+        data-tip="Redo" aria-label="Redo"
+        onClick={() => void redo()}
+        disabled={saving || layoutSaving || (redoMove ? viewActions?.moveHistoryBusy : redoStack.length === 0 || sourceDirty)}
+      >
+        <Redo2 size={15} />
+      </button>
+    </div>
+  )
 
   return (
     <div
@@ -1096,21 +1194,16 @@ export default function App() {
       <Header
         workspaceHost={setWorkspaceHost}
         account={about?.account}
+        build={about?.build}
         saving={saving || layoutSaving}
         sourceDirty={sourceDirty || viewDirty || paletteDirty}
         theme={theme}
+        useMacShortcut={useMacShortcut}
         diagnostics={file?.diagnostics ?? []}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenHelp={() => setModal({ type: 'help' })}
-        onShowDiagnostics={() => {
-          if (!showsSource(tab) && !setTab('source')) return
-          const first = file?.diagnostics[0]
-          if (first && !sourceDirty) {
-            setJumpLine(first.line)
-            setJumpNonce((n) => n + 1)
-          }
-        }}
+        onShowDiagnostic={handleShowInSource}
       />
 
       <div className="shell">
@@ -1119,7 +1212,7 @@ export default function App() {
           view={diagramView} catalog={modelViews.data} catalogError={modelViews.error}
           settingsPage={settingsPage} onSettingsPage={setSettingsPage}
           files={files} file={file} selectedId={selectedId} onSelect={selectElement}
-          onOpenFile={requestOpenFile} layoutDrafts={layoutDrafts} settingsHost={setSettingsHost}
+          onOpenFile={requestOpenFile} layoutDrafts={layoutDrafts} sourceDirty={sourceDirty} paletteDirty={paletteDirty} settingsHost={setSettingsHost}
           actions={showsDiagram(tab) ? customActions : null}
           colourSettings={palette ? <KeywordPalette palette={palette} onSave={setPalette} onDirtyChange={setPaletteDirty} /> :
             paletteError ? <p className="panel-help" role="alert">{paletteError}</p> :
@@ -1132,17 +1225,6 @@ export default function App() {
             <button type="button" className="menu-destructive" disabled={!file}
               onClick={() => file && setModal({ type: 'confirm-delete-file', name: file.name })}>Delete model</button>
           </ActionMenu>}
-          inspector={selectedElement && (
-          <Inspector
-            model={file!.model}
-            element={selectedElement}
-            onClose={() => setSelectedId(null)}
-            onPatch={handlePatch}
-            onDelete={openDeleteElement}
-            onShowInSource={handleShowInSource}
-            onSelect={selectElement}
-          />
-        )}
         />
 
         <main className="main">
@@ -1154,26 +1236,9 @@ export default function App() {
               {sidebarVisible ? <PanelLeftClose size={16} aria-hidden="true" /> : <PanelLeftOpen size={16} aria-hidden="true" />}
             </button>
             {file && <>
-              <div className="viewbar-actions" role="group" aria-label="Edit history">
-                <button
-                  className="icon-button tooltip"
-                  data-tip="Undo" aria-label="Undo"
-                  onClick={() => void undo()}
-                  disabled={saving || layoutSaving || (!undoMove && (undoStack.length === 0 || sourceDirty))}
-                >
-                  <Undo2 size={15} />
-                </button>
-                <button
-                  className="icon-button tooltip"
-                  data-tip="Redo" aria-label="Redo"
-                  onClick={() => void redo()}
-                  disabled={redoStack.length === 0 || sourceDirty || saving}
-                >
-                  <Redo2 size={15} />
-                </button>
-              </div>
-              <button className={cx('tab', tab === 'diagram' && 'active')} aria-pressed={tab === 'diagram'} onClick={() => setTab('diagram')}>
-                <Network size={14} /> Diagram
+              <button className={cx('tab', tab === 'diagram' && 'active')} aria-pressed={tab === 'diagram'}
+                aria-description={currentLayout ? 'Unsaved diagram changes' : undefined} onClick={() => setTab('diagram')}>
+                <Network size={14} /> Diagram {currentLayout && <UnsavedDot />}
               </button>
               <button className={cx('tab', tab === 'grid' && 'active')} aria-pressed={tab === 'grid'} onClick={() => setTab('grid')}>
                 <LayoutGrid size={14} /> Grid
@@ -1185,107 +1250,130 @@ export default function App() {
               >
                 <ListChecks size={14} /> Requirements
               </button>
-              <button className={cx('tab', tab === 'source' && 'active')} aria-pressed={tab === 'source'} onClick={() => setTab('source')}>
-                <Code2 size={14} /> Source
+              <button className={cx('tab', tab === 'source' && 'active')} aria-pressed={tab === 'source'}
+                aria-description={sourceDirty ? 'Unsaved source edits' : undefined} onClick={() => setTab('source')}>
+                <Code2 size={14} /> Source {sourceDirty && <UnsavedDot />}
               </button>
-              <button className={cx('tab', tab === 'split' && 'active')} aria-pressed={tab === 'split'} onClick={() => setTab('split')}>
-                <Columns2 size={14} /> Split
+              <button className={cx('tab', tab === 'split' && 'active')} aria-pressed={tab === 'split'}
+                aria-description={sourceDirty || layoutDirty(currentLayout, diagramView) ? 'Unsaved changes in Split' : undefined}
+                onClick={() => setTab('split')}>
+                <Columns2 size={14} /> Split {(sourceDirty || layoutDirty(currentLayout, diagramView)) && <UnsavedDot />}
               </button>
             </>}
           </div>
 
-          {loading && !file ? (
-            <div className="loading-screen">
-              <div className="loading-logo">
-                <Loader2 size={22} className="spin" />
-              </div>
-              <div>Loading the SysML workspace…</div>
-            </div>
-          ) : !file ? (
-            <div className="empty-state">
-              <div className="icon-wrap">
-                <FolderOpen size={24} />
-              </div>
-              <h2>{PROJECT_ID ? 'No model loaded' : 'Choose or add a project'}</h2>
-              <p>{PROJECT_ID ? 'Create or import a SysML model in the selected project.' : 'Use the Projects panel to create a project or import an existing one into this workspace.'}</p>
-              {PROJECT_ID ? <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" onClick={() => setModal({ type: 'new-file' })}>
-                  <FilePlus2 size={13} /> New model
-                </button>
-                <button className="btn" onClick={() => void refreshFiles()}>Refresh models</button>
-              </div> : (!sidebarVisible || sidebarTab !== 'projects') &&
-                <button className="btn btn-primary" onClick={() => { setSidebarTab('projects'); setSidebarVisible(true) }}>Show Projects</button>}
-            </div>
-          ) : tab === 'grid' ? (
-            <GridEditor
-              model={file.model}
-              selectedId={selectedId}
-              onSelect={selectElement}
-              onPatch={handlePatch}
-              onDelete={openDeleteElement}
-              onShowInSource={handleShowInSource}
-              onAddElement={(parent) => openAddElement(parent)}
-              onAddConnection={(parent) => openAddConnection(parent)}
-              onAddSatisfy={(requirement) => openAddSatisfy(requirement)}
-            />
-          ) : tab === 'requirements' ? (
-            <RequirementsView
-              key={file.name}
-              fileName={file.name}
-              model={file.model}
-              selectedId={selectedId}
-              onSelect={selectElement}
-              onPatch={handlePatch}
-              onAddRequirement={(parent) => openAddElement(parent, 'requirement', true)}
-              onAddSatisfy={(requirement) => openAddSatisfy(requirement)}
-              onDelete={openDeleteElement}
-              onShowInSource={handleShowInSource}
-            />
-          ) : (
-            <ModelPanes
-              source={showsSource(tab) && (
-                <SourceView
-                  key={`${PROJECT_ID}:${file.name}`}
-                  file={file}
-                  linkedElement={tab === 'split' ? sourceFocus : null}
-                  onCaretElement={tab === 'split' ? selectFromSource : undefined}
-                  jumpLine={jumpLine}
-                  jumpNonce={jumpNonce}
-                  saving={saving}
-                  onSave={handleSaveSource}
-                  onValidate={handleValidate}
-                  onNativeValidate={(content) => validateNativeFile(file.name, content)}
-                  onDirtyChange={setSourceDirty}
-                  onOpenHistory={() => setModal({ type: 'history' })}
-                  onDownload={handleDownload}
+          <div className="workbench-surface">
+            <div className="workbench-view">
+              {loading && !file ? (
+                <div className="loading-screen" role="status">
+                  <BrandIntro />
+                  <div className="loading-message"><Loader2 size={14} className="spin" aria-hidden="true" /> Loading the SysML workspace…</div>
+                </div>
+              ) : !file ? (
+                <div className="empty-state welcome-state">
+                  <BrandIntro />
+                  <h2>{PROJECT_ID ? 'No model loaded' : 'Choose or add a project'}</h2>
+                  <p>{PROJECT_ID ? 'Create or import a SysML model in the selected project.' : 'Use the Projects panel to create a project or import an existing one into this workspace.'}</p>
+                  {PROJECT_ID ? <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-primary" onClick={() => setModal({ type: 'new-file' })}>
+                      <FilePlus2 size={13} /> New model
+                    </button>
+                    <button className="btn" onClick={() => void refreshFiles()}>Refresh models</button>
+                  </div> : (!sidebarVisible || sidebarTab !== 'projects') &&
+                    <button className="btn btn-primary" onClick={() => { setSidebarTab('projects'); setSidebarVisible(true) }}>Show Projects</button>}
+                </div>
+              ) : tab === 'grid' ? (
+                <GridEditor
+                  historyControls={historyControls}
+                  model={file.model}
+                  selectedId={selectedId}
+                  onSelect={selectElement}
+                  onPatch={handlePatch}
+                  onDelete={openDeleteElement}
+                  onShowInSource={handleShowInSource}
+                  onAddElement={(parent) => openAddElement(parent)}
+                  onAddConnection={(parent) => openAddConnection(parent)}
+                  onAddSatisfy={(requirement) => openAddSatisfy(requirement)}
+                />
+              ) : tab === 'requirements' ? (
+                <RequirementsView
+                  historyControls={historyControls}
+                  key={file.name}
+                  fileName={file.name}
+                  model={file.model}
+                  selectedId={selectedId}
+                  onSelect={selectElement}
+                  onPatch={handlePatch}
+                  onAddRequirement={(parent) => openAddElement(parent, 'requirement', true)}
+                  onAddSatisfy={(requirement) => openAddSatisfy(requirement)}
+                  onDelete={openDeleteElement}
+                  onShowInSource={handleShowInSource}
+                />
+              ) : (
+                <ModelPanes
+                  source={showsSource(tab) && (
+                    <SourceView
+                      key={`${PROJECT_ID}:${file.name}`}
+                      historyControls={tab === 'source' ? historyControls : undefined}
+                      file={file}
+                      linkedElement={sourceFocus}
+                      onCaretElement={selectFromSource}
+                      diagramVisible={tab === 'split'}
+                      propertiesAvailable={Boolean(selectedElement)}
+                      propertiesOpen={inspectorOpen && Boolean(selectedElement)}
+                      onToggleProperties={() => setInspectorOpen(open => !open)}
+                      jumpLine={jumpLine}
+                      jumpNonce={jumpNonce}
+                      saving={saving}
+                      onSave={handleSaveSource}
+                      onValidate={handleValidate}
+                      onNativeValidate={(content) => validateNativeFile(file.name, content)}
+                      onDirtyChange={setSourceDirty}
+                      onOpenHistory={() => setModal({ type: 'history' })}
+                      onDownload={handleDownload}
+                    />
+                  )}
+                  diagram={showsDiagram(tab) && (
+                    <DiagramWorkspace
+                      key={file.name} file={file} historyControls={historyControls} view={diagramView} split={tab === 'split'}
+                      catalog={modelViews.data} catalogError={modelViews.error} layoutDraft={currentLayout}
+                      empty={!diagramVisible}
+                      tabs={<DiagramTabs tabs={openDiagrams} active={activeDiagram}
+                        dirty={item => layoutDirty(layoutDrafts[item.file], item.view)}
+                        onOpen={item => requestOpenFile(item.file, item.view, item.scope)} onClose={keys => void closeDiagrams(keys)} />}
+                      onOpen={view => requestOpenFile(file.name, view)}
+                      onSelected={(view, title, replace) => chooseDiagramView(view, file.name, { title, replaceKey: replace ? activeDiagram ?? undefined : undefined })}
+                      moveHistory={layoutHistories[file.name]}
+                      onMoveHistoryChange={update => setLayoutHistories(current =>
+                        ({ ...current, [file.name]: update(current[file.name] ?? {}) }))}
+                      onSaved={catalog => acceptLayouts(file.name, catalog)} onLayoutChange={updateLayouts} onLayoutSaving={setLayoutSaving}
+                      paletteRevision={palette?.revision} settingsHost={settingsHost}
+                      layoutSettingsVisible={sidebarVisible && sidebarTab === 'settings' && settingsPage === 'layout'}
+                      onOpenSettings={openViewSettings} onActions={setCustomActions} selectedId={selectedId} onSelectElement={selectElement}
+                      onAddElement={openAddElement} onOpenElementDiagram={openElementDiagram}
+                      onAddConnection={connectFromDiagram} onOpenAddConnection={openAddConnection}>
+                      {navigation => <DiagramView key={currentDiagramKey} historyControls={historyControls} onNotice={message => pushToast('info', message)} split={tab === 'split'} navigation={navigation} requestedScope={scopeRequest} onOpenElementDiagram={openElementDiagram}
+                        paletteRevision={palette?.revision} file={file} selectedId={selectedId} onSelect={selectElement}
+                        onAddElement={openAddElement} onAddConnection={connectFromDiagram}
+                        onOpenAddConnection={openAddConnection} onShowInSource={handleShowInSource} />}
+                    </DiagramWorkspace>
+                  )}
                 />
               )}
-              diagram={showsDiagram(tab) && (
-                <DiagramWorkspace
-                  key={file.name} file={file} view={diagramView} split={tab === 'split'}
-                  catalog={modelViews.data} catalogError={modelViews.error} layoutDraft={currentLayout}
-                  empty={!diagramVisible}
-                  tabs={<DiagramTabs tabs={openDiagrams} active={activeDiagram}
-                    dirty={item => layoutDirty(layoutDrafts[item.file], item.view)}
-                    onOpen={item => requestOpenFile(item.file, item.view, item.scope)} onClose={keys => void closeDiagrams(keys)} />}
-                  onOpen={view => requestOpenFile(file.name, view)}
-                  onSelected={(view, title, replace) => chooseDiagramView(view, file.name, { title, replaceKey: replace ? activeDiagram ?? undefined : undefined })}
-                  onSaved={catalog => acceptLayouts(file.name, catalog)} onLayoutChange={updateLayouts} onLayoutSaving={setLayoutSaving}
-                  paletteRevision={palette?.revision} settingsHost={settingsHost}
-                  onOpenSettings={openViewSettings} onActions={setCustomActions} selectedId={selectedId} onSelectElement={selectElement}
-                  onAddElement={openAddElement} onOpenElementDiagram={openElementDiagram}
-                  onAddConnection={connectFromDiagram} onOpenAddConnection={openAddConnection}>
-                  {navigation => <DiagramView key={currentDiagramKey} onNotice={message => pushToast('info', message)} split={tab === 'split'} navigation={navigation} requestedScope={scopeRequest} onOpenElementDiagram={openElementDiagram}
-                    paletteRevision={palette?.revision} file={file} selectedId={selectedId} onSelect={selectElement}
-                    onAddElement={openAddElement} onAddConnection={connectFromDiagram}
-                    onOpenAddConnection={openAddConnection} onShowInSource={handleShowInSource} />}
-                </DiagramWorkspace>
-              )}
-            />
-          )}
+            </div>
+            {file && selectedElement && inspectorOpen && <Inspector
+              model={file.model}
+              element={selectedElement}
+              docked={propertiesDocked}
+              onToggleDock={() => setPropertiesDocked(value => !value)}
+              onClose={() => tab === 'source' ? setSourcePropertiesOpen(false) : selectElement(null)}
+              onPatch={handlePatch}
+              onDelete={openDeleteElement}
+              onShowInSource={showSelectedDeclaration}
+              onSelect={selectElement}
+            />}
+          </div>
         </main>
-
-
       </div>
 
       <footer className="statusbar">

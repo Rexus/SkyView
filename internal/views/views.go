@@ -48,12 +48,13 @@ type Node struct {
 	Height  float64      `json:"height"`
 }
 type Edge struct {
-	Caption string       `json:"caption,omitempty"`
-	Element string       `json:"element"`
-	From    string       `json:"from"`
-	To      string       `json:"to"`
-	Points  [][2]float64 `json:"points"`
-	Label   [2]float64   `json:"label"`
+	Caption    string       `json:"caption,omitempty"`
+	Element    string       `json:"element"`
+	From       string       `json:"from"`
+	To         string       `json:"to"`
+	Points     [][2]float64 `json:"points"`
+	Label      [2]float64   `json:"label"`
+	LabelMoved bool         `json:"labelMoved,omitempty"`
 }
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$`)

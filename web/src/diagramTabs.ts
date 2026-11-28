@@ -3,7 +3,7 @@ import type { ModelViews } from './modelViews'
 import type { ViewConfig, SharedView } from './sharedViews'
 
 export type DiagramTab = { key: string; file: string; view: string | null; scope?: string; title: string }
-export type LayoutDraft = { base: ModelViews; config: ViewConfig }
+export type LayoutDraft = { base: ModelViews; config: ViewConfig; revision: string; recovered?: boolean }
 
 export const diagramTabKey = (file: string, view: string | null, scope?: string) => JSON.stringify([file, view, scope])
 

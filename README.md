@@ -1,23 +1,32 @@
-# SkyView
+<div align="center">
 
-**Visual systems modeling, grounded in SysML source.**
+<img src="web/public/skyview.svg" alt="SkyView logo — model nodes joined by right-angled connectors" width="112" height="112" />
 
-SkyView is a browser-based SysML v2 workbench with a Go backend and a React interface.
+<h1>SkyView</h1>
+
+<p><strong>An open-source graphical design tool for SysML v2</strong></p>
+<p>Create, visualize, edit and validate system models in your browser.</p>
+
+[![Check and build](https://img.shields.io/github/actions/workflow/status/Rexus/SkyView/check.yml?branch=main&label=checks&logo=github)](https://github.com/Rexus/SkyView/actions/workflows/check.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0891b2?logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](web/package.json)
+
+**[Quick start](#quick-start) · [Examples](examples/) · [Documentation](#documentation) · [Contribute](#contributing) · [Report a bug](https://github.com/Rexus/SkyView/issues)**
+
+</div>
+
+SkyView is a browser-based workbench with a Go backend and a React interface.
 Explore and edit systems through diagrams, tables, requirements and source code, with models
 stored as plain `.sysml` files.
 
-SkyView is experimental and implements a subset of SysML v2. OMG conformance has not been established.
-See the [initial baseline record](docs/baseline.md) for its origin, verification and known limits.
+[![SkyView Split view in light mode showing the inspection drone's SysML source and interconnection diagram](docs/images/skyview-drone.jpg)](docs/images/skyview-drone.jpg)
 
-[OMG specifications and the pinned official release](docs/standards.md) govern language meaning and
-native validation. [Tom Sawyer SysML v2 Viewer](docs/viewer-design.md) is the agreed reference for
-SkyView's design, behavior and appearance. Builds use published standards by default; an explicit
-`latest` option permits previews. The footer identifies the running release and local checker integrity.
+_Captured 28 November 2026 · SkyView v0.2.0 development build · base revision `9ac970f45c76`
+with v0.3 workbench changes._
 
-[![SkyView in light mode displaying the inspection drone's connected subsystems](docs/images/skyview-drone.jpg)](docs/images/skyview-drone.jpg)
-
-_Captured 28 November 2026 · SkyView v0.2.0 development build · v0.3 workbench changes
-on base revision `f56ac483f89d`._
+> **Experimental:** SkyView implements a subset of SysML v2. OMG conformance has not been established.
+> See [language support](#language-support) and the [initial baseline record](docs/baseline.md) for known limits.
 
 Explore the [inspection drone example](examples/inspection-drone/): connected subsystems, four requirements,
 mission behavior and planned verification checks. The native-valid model loads without diagnostics.
@@ -28,7 +37,8 @@ physical parts, a Simulink-style signal loop, swing-up and automatic balance, re
 and an optional runnable scientific simulation.
 
 **Contents:** [Features](#features) · [Quick start](#quick-start) · [Development](#development) ·
-[Language support](#language-support) · [Project layout](#project-layout) · [Contributing](CONTRIBUTING.md) · [Origins](#origins)
+[Documentation](#documentation) · [Language support](#language-support) ·
+[Project layout](#project-layout) · [Contributing](#contributing) · [Origins](#origins)
 
 ## Features
 
@@ -49,7 +59,7 @@ and an optional runnable scientific simulation.
   Projects support nested models and views, bundled examples, ZIP upload/export,
   public GitHub/GitLab snapshots and configured local folders. See the [project guide](docs/projects.md).
 - **Workspace UI:** diagram-first navigation with Projects, Model elements and Settings on the left,
-  selected properties below, portable role palettes, a command palette, and light and dark themes.
+  floating or docked properties on the right, portable role palettes, a command palette, and light and dark themes.
 
 Structured edits modify the source text and reparse the model. Diagram positions and notes are stored
 separately. Reliable preservation of arbitrary SysML models across edits remains to be verified.
@@ -126,7 +136,25 @@ Build a complete local bundle with `bash deployment/go/build.sh` (Go, Node.js an
 the recorded version. Downloaded upstream artifacts remain in ignored build/cache directories.
 See [build channels](docs/standards.md#build-channels).
 
+## Documentation
+
+| I want to… | Start here |
+| --- | --- |
+| Run SkyView locally or host it | [Deployment options](deployment/README.md) |
+| Explore a complete example | [Inspection drone](docs/drone-example.md) · [Inverted pendulum](docs/pendulum-example.md) |
+| Import a project or move my models | [Projects and workspaces](docs/projects.md) · [Model exchange](docs/model-exchange.md) |
+| Arrange and share a diagram | [Custom diagram views](docs/shared-presentation.md) |
+| Understand the checker and language limits | [Standards and validation](docs/standards.md) |
+| Work on the code | [Contributing](CONTRIBUTING.md) · [Architecture](architecture/README.md) · [HTTP API](docs/api.md) |
+
+[Tom Sawyer SysML v2 Viewer](docs/viewer-design.md) is the agreed reference for SkyView's design,
+behavior and appearance. SkyView uses its own code and assets.
+
 ## Language support
+
+[OMG specifications and the pinned official release](docs/standards.md) govern language meaning and
+native validation. Builds use published standards by default; an explicit `latest` option permits
+previews. The footer identifies the running release and local checker integrity.
 
 The custom Go parser supports selected declarations, types, values, documentation, connections,
 dependencies and satisfaction links. It also projects the drone example's use case, constraints,
@@ -167,6 +195,16 @@ API and Services specification has not been established [3].
 | `architecture/` | Native project design contract and implementation map |
 | `deployment/` | Go, Docker/Podman and Kubernetes files and guides |
 | `scripts/` | Shared native model validation and export tooling |
+
+## Contributing
+
+Bug reports, small example models, documentation improvements and code contributions are welcome.
+If a model does not behave as expected, a minimal `.sysml` example and the app's **Copy build report**
+help us reproduce it. See [how to report a bug](CONTRIBUTING.md#report-a-bug) before sharing project data.
+
+[Open an issue](https://github.com/Rexus/SkyView/issues/new/choose) to report a problem or suggest an improvement,
+or follow the [contributor guide](CONTRIBUTING.md) to open a pull request against `main`.
+See the [security policy](SECURITY.md) for private vulnerability reporting.
 
 ## Origins
 

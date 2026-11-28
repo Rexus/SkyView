@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronUp, Copy } from 'lucide-react'
 import { deploymentLabel, type AboutInfo } from '../about'
 import type { StandardsIdentity } from './StandardsVersion'
+import BrandMark, { brandDescription, brandPurpose } from './BrandMark'
 
 function releaseLabel(info: AboutInfo['build']) {
   if (info.official) {
@@ -64,7 +65,14 @@ export default function BuildStatus({ about, unavailable, standards, modelRevisi
         <ChevronUp size={11} aria-hidden="true" />
       </summary>
       <div className="build-status-panel">
-        <strong>SkyView {build.version}</strong>
+        <div className="build-brand">
+          <BrandMark size={44} />
+          <div>
+            <strong>SkyView {build.version}</strong>
+            <p>{brandDescription}</p>
+          </div>
+        </div>
+        <p className="build-purpose">{brandPurpose}</p>
         <dl>
           <dt>Build</dt><dd>{releaseLabel(build)}</dd>
           <dt>Deployment</dt><dd>{deploymentLabel(about.mode)}</dd>

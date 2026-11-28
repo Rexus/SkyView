@@ -19,7 +19,7 @@ test('Project panels navigate files and authored endpoints without inferring dep
   let opened,selected,added,panel
   const elements=[{id:'root',name:'root',kind:'root'}, {id:'pkg',name:'Architecture',kind:'package',qname:'Architecture',parentId:'root'}, {id:'p',name:'A',kind:'part',qname:'A',parentId:'root'}, {id:'q',name:'B',kind:'part',qname:'B',parentId:'root'}, {id:'d',name:'uses B',kind:'dependency',sourceId:'p',targetId:'q'}, {id:'u',name:'unknown',kind:'dependency',source:'external',targetId:'q'}]
   elements.forEach(e=>{e.spans={bodyOpen:-1,bodyClose:-1};e.line=1;e.qname??=e.name})
-  const props={panel:'projects',onPanel:value=>panel=value,files:[{name:'models/A.sysml'},{name:'models/nested/B.sysml'}],file:{name:'models/A.sysml',model:{rootId:'root',elements,diagnostics:[],imports:['External::*']}},selectedId:'p',onSelect:id=>selected=id,onOpenFile:(...args)=>opened=args,view:null,catalog:{ config:{views:[{id:'overview',title:'System Overall',owner:'.'}]},etag:'one' },settingsPage:'colours',settingsHost:()=>{},actions:{addElement:id=>added=id},projectBar:createElement('div',null,'Project picker'),inspector:createElement('div',null,'Selected properties')}
+  const props={panel:'projects',onPanel:value=>panel=value,files:[{name:'models/A.sysml'},{name:'models/nested/B.sysml'}],file:{name:'models/A.sysml',model:{rootId:'root',elements,diagnostics:[],imports:['External::*']}},selectedId:'p',onSelect:id=>selected=id,onOpenFile:(...args)=>opened=args,view:null,catalog:{ config:{views:[{id:'overview',title:'System Overall',owner:'.'}]},etag:'one' },settingsPage:'colours',settingsHost:()=>{},actions:{addElement:id=>added=id},projectBar:createElement('div',null,'Project picker')}
   await act(async()=>root.render(createElement(Sidebar,props)))
   assert.equal(host.querySelectorAll('.project-file').length,2)
   const button = text => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === text)
@@ -43,7 +43,7 @@ test('Project panels navigate files and authored endpoints without inferring dep
   assert.equal(host.querySelectorAll('.model-link [aria-label="to"]').length,1,'only resolved relationships have arrows')
   await act(async()=>host.querySelector('.model-link button').click());assert.equal(selected,'p')
   await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent.includes('Add selected to view')).click());assert.equal(added,'p')
-  assert.ok(host.querySelector('[aria-label="Element properties"]'))
+  assert.equal(host.querySelector('[aria-label="Element properties"]'), null)
  } finally {
   const {act}=await import('react');if(root) await act(async()=>root.unmount())
   dom.window.close();await rm(temp,{recursive:true,force:true});globalThis.IS_REACT_ACT_ENVIRONMENT=oldAct;globalThis.fetch=oldFetch

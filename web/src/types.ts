@@ -108,6 +108,8 @@ export interface DiagramNote {
 export interface LayoutFile {
   version?: number
   scopes?: Record<string, Partial<Record<DiagramMode, Record<string, LayoutNode>>>>
+  routes?: Record<string, Partial<Record<DiagramMode, import('./connectorRoutes').RouteEdits>>>
+  connectorLabels?: Record<string, Partial<Record<DiagramMode, import('./connectorRoutes').LabelEdits>>>
   notes?: Record<string, DiagramNote>
 }
 

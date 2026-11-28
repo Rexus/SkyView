@@ -10,12 +10,13 @@ import (
 // Presentation settings do not instantiate SysML elements or establish ownership.
 // Children use absolute canvas coordinates; parent is an explicit layout container.
 type Arrangement struct {
-	Pattern   string  `json:"pattern,omitempty"`
-	Direction string  `json:"direction,omitempty"`
-	Columns   int     `json:"columns,omitempty"`
-	Locked    bool    `json:"locked,omitempty"`
-	Gap       float64 `json:"gap,omitempty"`
-	Padding   float64 `json:"padding,omitempty"`
+	Pattern        string  `json:"pattern,omitempty"`
+	Direction      string  `json:"direction,omitempty"`
+	Columns        int     `json:"columns,omitempty"`
+	Locked         bool    `json:"locked,omitempty"`
+	PositionLocked bool    `json:"positionLocked,omitempty"`
+	Gap            float64 `json:"gap,omitempty"`
+	Padding        float64 `json:"padding,omitempty"`
 }
 type Style struct {
 	Fill   string `json:"fill,omitempty"`

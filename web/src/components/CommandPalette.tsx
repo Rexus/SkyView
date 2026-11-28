@@ -74,13 +74,14 @@ export default function CommandPalette({ open, commands, onClose }: Props) {
 
   return (
     <div className="palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="palette" role="dialog" aria-modal="true">
+      <div className="palette" role="dialog" aria-modal="true" aria-label="Search">
         <div className="palette-input">
           <Search size={17} style={{ color: 'var(--text-dim)' }} />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search commands, elements, types"
             placeholder="Search commands, elements, types…"
             spellCheck={false}
           />

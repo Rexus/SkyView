@@ -10,8 +10,9 @@ import { layoutFlow } from '../flowLayout'
 import { canPlaceElement, type DropPosition } from '../elementDrag'
 import { visibleOwner } from '../sourceNavigation'
 import { routeModelEdges } from '../modelDiagramRouting'
-import { labelWidth } from '../relationshipLabels'
-import { Link2, Plus, Wand2 } from 'lucide-react'
+import { attachmentSide, clearConnector, samePoint, type RouteEdits } from '../connectorRoutes'
+import type { Point } from '../sharedViews'
+import { Link2, Plus } from 'lucide-react'
 import { API_BASE, getLayout, putLayout } from '../api'
 import type {
   DiagramMode,
@@ -37,7 +38,7 @@ import {
 import type { SysmlNodeData } from './SysmlNode'
 import type { SceneNode } from '../diagramScene'
 import DiagramCanvas from './DiagramCanvas'
-import ActionMenu from './ActionMenu'
+import DiagramToolbar from './DiagramToolbar'
 import { connectModelPorts, type AddDiagramConnection } from '../diagramConnections'
 import { type NoteFlowNode } from './NoteNode'
 
@@ -49,12 +50,13 @@ type DiagramFlowNode = SysmlFlowNode | NoteFlowNode
 interface Props {
   split?: boolean
   navigation?: ReactNode
+  historyControls?: ReactNode
   requestedScope?: { element: string }
   onOpenElementDiagram?: (id: string) => void
   paletteRevision?: string
   file: FileResponse
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
   onAddElement: (parent?: string) => void
   onAddConnection: AddDiagramConnection
   onNotice?: (message: string) => void
@@ -113,9 +115,8 @@ function computeLayout(
     height: node.height ?? estimateHeight(node.element, node.ports.length, node.attributes.length, node.doc),
   }))
   const direction = mode === 'interconnection' ? 'LR' : 'TB'
-  const longest = edges.reduce((width, edge) => Math.max(width, labelWidth(String(edge.label ?? ''))), 0)
-  const gap = Math.max(48, Math.min(144, Math.ceil(longest + 20)))
-  const positions = layoutFlow(sized, edges, direction, gap, gap + 32)
+  const gap = edges.some(edge => edge.label) ? 54 : 42
+  const positions = layoutFlow(sized, edges, direction, gap, gap + 24)
   return Object.fromEntries(Object.entries(positions).map(([id, position]) => [
     id, { x: position.x + 48, y: position.y + 48 },
   ]))
@@ -204,6 +205,7 @@ function buildGraph(model: SysmlModel, scope: SysmlElement, mode: DiagramMode) {
 export default function DiagramView({
   split,
   navigation,
+  historyControls,
   requestedScope,
   onOpenElementDiagram,
   paletteRevision, file,
@@ -231,7 +233,7 @@ export default function DiagramView({
   const [layout, setLayout] = useState<LayoutFile>({})
   const [layoutLoaded, setLayoutLoaded] = useState(false)
   const [fitRevision, setFitRevision] = useState(0)
-  const [manual, setManual] = useState<{ key: string; positions: Record<string, { x: number; y: number }> }>()
+  const [manual, setManual] = useState<{ key: string; positions: Record<string, DropPosition>; routes?: RouteEdits }>()
   const scopeKey = JSON.stringify([file.name, scopeId, mode])
   useEffect(() => {
     setManual(current => current?.key === scopeKey ? current : undefined)
@@ -395,19 +397,24 @@ export default function DiagramView({
   const automaticPositions = useMemo(() => computeLayout(graph.nodes, graph.edges, mode), [graph, mode])
   const positions = useMemo(() => manual?.key === scopeKey
     ? { ...automaticPositions, ...manual.positions } : automaticPositions, [automaticPositions, manual, scopeKey])
+  const manualRoutes = manual?.key === scopeKey ? manual.routes : undefined
+  const savedRoutes = layout.version === LAYOUT_VERSION && scope ? layout.routes?.[scope.id]?.[mode] : undefined
+  const connectorLabels = scope ? layout.connectorLabels?.[scope.id]?.[mode] : undefined
   const visibleNotes = useMemo(() => {
     const ids = new Set(graph.nodes.map(node => node.id))
     return Object.values(layout.notes ?? {}).filter(note => ids.has(note.targetId))
   }, [graph.nodes, layout.notes])
 
-  const routedEdges = useMemo(() => {
+  const routeBoxes = useMemo(() => {
     const boxes = graph.nodes.flatMap(node => {
       const glyph = glyphs[node.id], position = positions[node.id]
       return glyph && position ? [[node.id, { ...position, width: glyph.width, height: glyph.height, glyph }]] as const : []
     })
-    const annotations = visibleNotes.map(note => ({ x: note.x, y: note.y, width: NOTE_W, height: NOTE_H }))
-    return routeModelEdges(graph.edges, new Map(boxes), annotations)
-  }, [graph, glyphs, positions, visibleNotes])
+    return new Map(boxes)
+  }, [graph.nodes, glyphs, positions])
+  const annotations = useMemo(() => visibleNotes.map(note => ({ x: note.x, y: note.y, width: NOTE_W, height: NOTE_H })), [visibleNotes])
+  const routedEdges = useMemo(() => routeModelEdges(graph.edges, routeBoxes, annotations, manualRoutes, connectorLabels),
+    [graph.edges, routeBoxes, annotations, manualRoutes, connectorLabels])
 
   // Rebuild React Flow nodes whenever the graph or saved layout changes.
   useEffect(() => {
@@ -489,12 +496,15 @@ export default function DiagramView({
   }, [highlightedId, setNodes])
 
   const persistLayout = useCallback(
-    (positions: Record<string, DropPosition>, targetScope = scope?.id) => {
+    (positions: Record<string, DropPosition>, targetScope = scope?.id, routes?: RouteEdits) => {
       if (!targetScope) return
       const baseScopes = layout.version === LAYOUT_VERSION ? layout.scopes ?? {} : {}
       const next: LayoutFile = {
         ...layout,
         version: LAYOUT_VERSION,
+        ...(routes && { routes: { ...layout.routes,
+          [targetScope]: { ...layout.routes?.[targetScope], [mode]: routes },
+        } }),
         scopes: {
           ...baseScopes,
           [targetScope]: {
@@ -533,11 +543,36 @@ export default function DiagramView({
           positions[n.id] = { x: Math.round(position.x), y: Math.round(position.y) }
         }
       }
-      setManual({ key: scopeKey, positions })
+      setManual({ key: scopeKey, positions, routes: manualRoutes })
       persistLayout(positions)
     },
-    [nodes, layout.notes, persistNotes, persistLayout, scopeKey],
+    [nodes, layout.notes, persistNotes, persistLayout, scopeKey, manualRoutes],
   )
+
+  const rerouteConnector = (id: string, points: Point[]) => {
+    const edge = routedEdges.find(item => item.id === id)
+    const before = edge?.data?.points as Point[] | undefined
+    const movable = edge?.data?.movableAttachments as { source: boolean; target: boolean } | undefined
+    const from = edge && routeBoxes.get(edge.source), to = edge && routeBoxes.get(edge.target)
+    if (!before || !from || !to || !clearConnector(points, [...routeBoxes.values(), ...annotations]) ||
+        (movable?.source ? !attachmentSide(points[0], from) : !samePoint(points[0], before[0])) ||
+        (movable?.target ? !attachmentSide(points.at(-1)!, to) : !samePoint(points.at(-1), before.at(-1)))) {
+      onNotice?.('The connector must stay clear of diagram boxes.')
+      return
+    }
+    const routes = { ...manualRoutes, [id]: points }
+    setManual({ key: scopeKey, positions, routes })
+    persistLayout(positions, scope?.id, routes)
+  }
+
+  const moveConnectorLabel = (id: string, position: Point) => {
+    if (!scope) return
+    const next = { ...layout, connectorLabels: { ...layout.connectorLabels,
+      [scope.id]: { ...layout.connectorLabels?.[scope.id], [mode]: { ...connectorLabels, [id]: position } },
+    } }
+    setLayout(next)
+    putLayout(file.name, next).catch(() => onNotice?.('Could not save the connector label position.'))
+  }
 
   const autoLayout = () => {
     setManual(undefined)
@@ -555,7 +590,7 @@ export default function DiagramView({
     }
     const geometry = displayed ? positions : layout.scopes?.[owner.id]?.[mode] ?? {}
     const placed = { ...geometry, [id]: { x: Math.round(point.x), y: Math.round(point.y) } }
-    setManual({ key: JSON.stringify([file.name, owner.id, mode]), positions: placed })
+    setManual({ key: JSON.stringify([file.name, owner.id, mode]), positions: placed, routes: displayed ? manualRoutes : undefined })
     persistLayout(placed, owner.id)
     if (owner.id !== scope?.id) setScopeId(owner.id)
     onSelect(id)
@@ -569,12 +604,10 @@ export default function DiagramView({
     }
   }
 
-  const selectedConnection = edges.find((e) => e.id === selectedId)
-
   if (!scope) {
     return (
       <>
-      <div className="view-toolbar diagram-toolbar">{navigation}</div>
+      <DiagramToolbar navigation={navigation} historyControls={historyControls} />
       <div className="empty-state">
         <div className="icon-wrap">
           <Link2 size={22} />
@@ -591,8 +624,7 @@ export default function DiagramView({
 
   return (
     <>
-      <div className="view-toolbar diagram-toolbar model-diagram-toolbar">
-        {navigation}
+      <DiagramToolbar navigation={navigation} historyControls={historyControls} onAutoLayout={autoLayout} scopeControls={<>
         <select className="select input-sm diagram-scope" aria-label="Model scope" value={scopeId} title={scope.qname}
           onChange={e => setScopeId(e.target.value)}>
           {scopes.map(item => <option key={item.id} value={item.id}>{item.qname}</option>)}
@@ -602,18 +634,15 @@ export default function DiagramView({
           <option value="interconnection">Interconnection</option>
           <option value="containment">Containment</option>
         </select>
-        <button type="button" className="icon-button tooltip" aria-label="Auto layout" data-tip="Auto layout"
-          onClick={autoLayout}><Wand2 size={15} /></button>
-        <ActionMenu label="Diagram actions" iconOnly>
+      </>}>
           <button onClick={() => onAddElement(scope.id)}>Add part</button>
           <button onClick={() => onOpenAddConnection(scope.id)}>Add connection</button>
           <button onClick={addNote} disabled={graph.nodes.length === 0}>Add note</button>
           {saved && <button onClick={() => {
-            setManual({ key: scopeKey, positions: saved })
+            setManual({ key: scopeKey, positions: saved, routes: savedRoutes })
             setFitRevision(revision => revision + 1)
-          }}>Restore saved positions</button>}
-        </ActionMenu>
-      </div>
+          }}>{savedRoutes && Object.keys(savedRoutes).length ? 'Restore saved positions and routes' : 'Restore saved positions'}</button>}
+      </DiagramToolbar>
 
       {glyphError && <p role="alert">{glyphError}</p>}
       <div className="diagram-wrap">
@@ -629,32 +658,25 @@ export default function DiagramView({
             </button>
           </div>
         ) : (
-          <>
-            <DiagramCanvas elementDrop={{ file: file.name, place: placeElement }} split={split} frameTitle={displayName(scope)} fitRevision={fitRevision} includeRoutes
+            <DiagramCanvas onConnectorRouteChange={rerouteConnector} onConnectorLabelChange={moveConnectorLabel}
+              elementDrop={{ file: file.name, place: placeElement }} split={split} frameTitle={displayName(scope)} fitRevision={fitRevision} includeRoutes
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
-              onNodeClick={(_, node) => {
-                if (node.type === 'sysml') onSelect(node.id)
-              }}
+              onClearSelection={() => onSelect(null)}
+              onNodeClick={(_, node) => onSelect(node.type === 'sysml' ? node.id : null)}
               onNodeDoubleClick={(event, node) => {
                 if (node.type !== 'sysml' || (event.target as Element).closest('button, .react-flow__handle')) return
                 onOpenElementDiagram?.(node.id)
               }}
               onEdgeClick={(_, edge) => {
                 const data = edge.data as EdgeData | undefined
-                if (data?.connection) onSelect(data.connection.id)
+                onSelect(data?.connection?.id ?? null)
               }}
               onNodeDragStop={onNodeDragStop}
               onConnect={handleConnect}
             />
-            {selectedConnection && (
-              <div className="diagram-hint" style={{ left: 'auto', right: 14, bottom: 14 }}>
-                Selected: {selectedConnection.label ?? 'connection'}
-              </div>
-            )}
-          </>
         )}
       </div>
     </>

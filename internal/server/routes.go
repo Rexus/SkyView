@@ -29,6 +29,9 @@ func (s *Server) registerFileRoutes(mux *http.ServeMux) {
 		{"POST", "/files/{name}/restore", (*Server).handleRestore},
 		{"GET", "/files/{name}/views", (*Server).handleViews},
 		{"PUT", "/files/{name}/views", (*Server).handlePutViews},
+		{"GET", "/files/{name}/view-draft", (*Server).handleViewDraft},
+		{"PUT", "/files/{name}/view-draft", (*Server).handleViewDraft},
+		{"DELETE", "/files/{name}/view-draft", (*Server).handleViewDraft},
 		{"POST", "/files/{name}/views/preview", (*Server).handlePreviewView},
 		{"GET", "/files/{name}/views/{view}", (*Server).handleViewSVG},
 	}

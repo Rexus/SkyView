@@ -87,6 +87,7 @@ func (s *Server) handlePutViews(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error(), nil)
 		return
 	}
+	s.clearPublishedViewDraft(name, r.Header.Get("If-View-Match"), b)
 	w.Header().Set("ETag", revisionOf(string(b)))
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

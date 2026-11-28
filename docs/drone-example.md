@@ -129,12 +129,14 @@ The generated preview was checked locally; GitHub rendering has not yet been che
 
 ## README screenshot
 
-To refresh the README screenshot, open the bundled Inspection Drone example in light mode and
-choose **Diagram → InspectionDrone::Drone → Interconnection**. Use **Fit diagram to window** to
-show all five nodes. Space the cards for readable labels. Capture the application viewport to `docs/images/skyview-drone.jpg`, including
-the footer and its diagnostics. Update the README caption with the capture date, app version and
-revision from **Copy build report**. Identify the recorded revision as the base revision if the
-build contains uncommitted changes.
+To refresh the README screenshot, open the bundled Inspection Drone example in light mode. Choose
+**Split**, set the diagram scope to **InspectionDrone::Drone**, and choose **Interconnection**.
+Use **Fit diagram to window** to show all five nodes and select the controller to reveal its
+declaration in Source. Hide the sidebar and use **Element properties** in the Source toolbar to
+hide the panel if it obscures the diagram. Capture the application viewport to `docs/images/skyview-drone.jpg`,
+including the footer and its diagnostics. Update the README caption with the capture date, app
+version and revision from **Copy build report**. Identify the recorded revision as the base
+revision if the build contains uncommitted changes.
 
 ## References
 

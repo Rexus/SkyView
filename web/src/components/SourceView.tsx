@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { linter, lintGutter, lintKeymap, setDiagnostics } from '@codemirror/lint'
 import { clearEditedDiagnostics, editorDiagnostics, editorLocation, normalizeSource } from '../sourceDiagnostics'
@@ -6,8 +6,11 @@ import { Decoration, EditorView, keymap, type DecorationSet, type ViewUpdate } f
 import { StateEffect, StateField } from '@codemirror/state'
 import type { Diagnostic as EditorDiagnostic } from '@codemirror/lint'
 import DiagnosticOverview from './DiagnosticOverview'
+import UnsavedDot from './UnsavedDot'
+import { setSavedSource, unsavedSourceLines } from '../sourceChanges'
 import { declarationAt, sourceDeclarations } from '../sourceNavigation'
-import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
+import { foldedRanges, HighlightStyle, syntaxHighlighting, unfoldEffect } from '@codemirror/language'
+import { sysmlFolding, sysmlLanguage } from '../sourceLanguage'
 import { tags } from '@lezer/highlight'
 import {
   CheckCircle2,
@@ -16,6 +19,7 @@ import {
   Download,
   History,
   Info,
+  PanelRight,
   RotateCcw,
   Save,
   TriangleAlert,
@@ -25,9 +29,14 @@ import type { Diagnostic, FileResponse, NativeValidation } from '../types'
 import { cx, plural } from '../utils'
 
 interface Props {
+  historyControls?: ReactNode
   file: FileResponse
   linkedElement?: { id: string } | null
-  onCaretElement?: (id: string | null) => void
+  onCaretElement: (id: string | null) => void
+  diagramVisible: boolean
+  propertiesAvailable: boolean
+  propertiesOpen: boolean
+  onToggleProperties: () => void
   jumpLine: number | null
   jumpNonce: number
   saving: boolean
@@ -38,67 +47,6 @@ interface Props {
   onOpenHistory: () => void
   onDownload: () => void
 }
-
-const keywords = new Set([
-  'package', 'part', 'port', 'attribute', 'requirement', 'connection', 'satisfy',
-  'doc', 'import', 'private', 'public', 'protected', 'def', 'specializes',
-  'specialises', 'connect', 'to', 'by', 'ref', 'in', 'out', 'inout', 'action',
-  'state', 'item', 'enum', 'interface', 'allocation', 'flow', 'constraint',
-  'calc', 'case', 'analysis', 'verification', 'view', 'rendering', 'concern',
-  'metadata', 'abstract', 'readonly', 'derived', 'end', 'individual', 'snapshot',
-  'timeslice', 'nonunique', 'ordered', 'constant', 'alias', 'dependency', 'comment',
-])
-
-const builtinTypes = new Set([
-  'String', 'Integer', 'Boolean', 'Real', 'Natural', 'Complex', 'Rational',
-  'Number', 'Anything', 'Positive', 'Negative', 'UnlimitedNatural', 'ScalarValues',
-])
-
-const sysmlLanguage = StreamLanguage.define({
-  startState: () => ({ inComment: false }),
-  token(stream, state) {
-    if (state.inComment) {
-      // Scan the whole line for the closing delimiter; the previous version
-      // only checked at the current position, so a comment ending after
-      // indentation left the lexer stuck in comment state (everything grey).
-      while (!stream.eol()) {
-        if (stream.match('*/')) {
-          state.inComment = false
-          return 'comment'
-        }
-        stream.next()
-      }
-      return 'comment'
-    }
-    if (stream.eatSpace()) return null
-    if (stream.match('//')) {
-      stream.skipToEnd()
-      return 'comment'
-    }
-    if (stream.match('/*')) {
-      state.inComment = true
-      while (!stream.eol()) {
-        if (stream.match('*/')) {
-          state.inComment = false
-          break
-        }
-        stream.next()
-      }
-      return 'comment'
-    }
-    if (stream.match(/"(?:[^"\\]|\\.)*"/)) return 'string'
-    if (stream.match(/\d+(?:\.\d+)?/)) return 'number'
-    if (stream.match(/[A-Za-z_$][A-Za-z0-9_$]*/)) {
-      const word = stream.current()
-      if (keywords.has(word)) return 'keyword'
-      if (builtinTypes.has(word)) return 'typeName'
-      return 'variableName'
-    }
-    if (stream.match(/::|->|=>|:=|==|!=|<=|>=|&&|\|\||\.\.|\*\*|:>|:>>/)) return 'operator'
-    stream.next()
-    return null
-  },
-})
 
 const highlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--syntax-keyword)', fontWeight: '600' },
@@ -160,10 +108,22 @@ const linkedRange = StateField.define<DecorationSet>({
 })
 const emptyDiagnostics: Diagnostic[] = []
 
+function revealSource(view: EditorView, from: number, to = from) {
+  const effects: StateEffect<unknown>[] = [EditorView.scrollIntoView(from, { y: 'center', x: 'nearest' })]
+  foldedRanges(view.state).between(from, to, (start, end) => {
+    if (start < (to === from ? to + 1 : to) && end > from) effects.push(unfoldEffect.of({ from: start, to: end }))
+  })
+  return effects
+}
+
 export default function SourceView({
   file,
   linkedElement,
   onCaretElement,
+  diagramVisible,
+  propertiesAvailable,
+  propertiesOpen,
+  onToggleProperties,
   jumpLine,
   jumpNonce,
   saving,
@@ -173,6 +133,7 @@ export default function SourceView({
   onDirtyChange,
   onOpenHistory,
   onDownload,
+  historyControls,
 }: Props) {
   const [draft, setDraft] = useState(() => normalizeSource(file.content))
   const [dirty, setDirty] = useState(false)
@@ -215,7 +176,6 @@ export default function SourceView({
   const [overviewGeometry, setOverviewGeometry] = useState(0)
   const declarations = useMemo(() => sourceDeclarations(file), [file])
   const savedSource = useMemo(() => normalizeSource(file.content), [file.content])
-  const follows = Boolean(onCaretElement)
   const dirtyRef = useRef(dirty)
   const draftRef = useRef(draft)
   const saveRef = useRef<() => void>(() => {})
@@ -224,7 +184,8 @@ export default function SourceView({
   const handleEditorUpdate = useCallback((update: ViewUpdate) => {
     if (update.heightChanged) setOverviewGeometry(value => value + 1)
     const link = navigation.current
-    if (!link.onCaretElement || !update.selectionSet || update.docChanged || draftRef.current !== link.savedSource) return
+    if (!update.selectionSet || update.docChanged || draftRef.current !== link.savedSource) return
+    if (update.transactions.some(transaction => transaction.effects.some(effect => effect.is(linkDeclaration)))) return
     link.onCaretElement(declarationAt(link.declarations, update.state.selection.main.head))
   }, [])
 
@@ -243,6 +204,10 @@ export default function SourceView({
   useEffect(() => {
     onDirtyChange(dirty)
   }, [dirty, onDirtyChange])
+
+  useEffect(() => {
+    if (editor) editor.dispatch({ effects: setSavedSource.of(savedSource) })
+  }, [editor, savedSource])
 
   // Every result belongs to an exact draft. Edits, file switches and unmounts
   // invalidate the old request, including requests that finish out of order.
@@ -270,9 +235,12 @@ export default function SourceView({
 
   useEffect(() => {
     if (!editor) return
-    const selected = draft === savedSource ? declarations.find(item => item.id === linkedElement?.id)?.name : undefined
-    if (selected && selected.to <= editor.state.doc.length) {
-      editor.dispatch({ effects: [linkDeclaration.of(selected), EditorView.scrollIntoView(selected.from, { y: 'center' })] })
+    const selected = draft === savedSource ? declarations.find(item => item.id === linkedElement?.id) : undefined
+    if (selected && editor.state.doc.toString() === savedSource) {
+      editor.dispatch({
+        selection: { anchor: selected.name.from },
+        effects: [...revealSource(editor, selected.from, selected.to), linkDeclaration.of(selected)],
+      })
     } else {
       editor.dispatch({ effects: linkDeclaration.of(null) })
     }
@@ -284,7 +252,7 @@ export default function SourceView({
     const line = view.state.doc.line(Math.max(1, Math.min(jumpLine, view.state.doc.lines)))
     view.dispatch({
       selection: { anchor: line.from },
-      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+      effects: revealSource(view, line.from),
     })
     view.focus()
   }, [jumpLine, jumpNonce, file.name, editor])
@@ -308,9 +276,11 @@ export default function SourceView({
   const extensions = useMemo(
     () => [
       sysmlLanguage,
+      sysmlFolding,
       syntaxHighlighting(highlightStyle),
       cmTheme,
       linkedRange,
+      unsavedSourceLines,
       linter(null),
       lintGutter({ hoverTime: 300 }),
       clearEditedDiagnostics,
@@ -348,7 +318,7 @@ export default function SourceView({
     if (!view || !marker) return
     view.dispatch({
       selection: { anchor: marker.from, head: marker.to },
-      effects: EditorView.scrollIntoView(marker.from, { y: 'center' }),
+      effects: revealSource(view, marker.from),
     })
     view.focus()
   }
@@ -356,12 +326,15 @@ export default function SourceView({
   return (
     <div className="source-layout">
       <div className="source-toolbar">
+        {historyControls}
         <span className="section-title">
           <Code2 size={13} /> Source
         </span>
-        <span className="badge badge-muted mono source-file" title={file.name}>{file.name}</span>
+        <span className="badge badge-muted mono source-file" title={file.name}>
+          {file.name}{dirty && <UnsavedDot label="Unsaved source edits" />}
+        </span>
         {dirty ? (
-          <span className="badge badge-warning source-draft-status">unsaved changes{follows ? " · diagram shows saved source" : ""}</span>
+          <span className="source-draft-status">{diagramVisible ? 'Diagram shows saved source' : 'Unsaved changes'}</span>
         ) : (
           <span className="badge badge-success source-sync-status">
             <CheckCircle2 size={10} /> synced
@@ -396,6 +369,11 @@ export default function SourceView({
         </button>
         <button className="btn btn-sm btn-primary" onClick={() => void save()} disabled={!dirty || saving}>
           <Save size={13} /> {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button type="button" className="icon-button tooltip" aria-label="Element properties"
+          aria-pressed={propertiesOpen} data-tip={propertiesOpen ? 'Hide element properties' : 'Show element properties'}
+          onClick={onToggleProperties} disabled={!propertiesAvailable && !propertiesOpen}>
+          <PanelRight size={15} aria-hidden="true" />
         </button>
       </div>
 

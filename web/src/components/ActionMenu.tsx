@@ -1,9 +1,11 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { ChevronDown, Ellipsis } from 'lucide-react'
 
-export default function ActionMenu({ label, iconOnly, children }: {
+export default function ActionMenu({ label, iconOnly, className, trigger, children }: {
   label: string
   iconOnly?: boolean
+  className?: string
+  trigger?: ReactNode
   children: ReactNode
 }) {
   const ref = useRef<HTMLDetailsElement>(null)
@@ -14,7 +16,7 @@ export default function ActionMenu({ label, iconOnly, children }: {
     document.addEventListener('pointerdown', closeOutside)
     return () => document.removeEventListener('pointerdown', closeOutside)
   }, [])
-  return <details className="action-menu" ref={ref} onKeyDown={event => {
+  return <details className={className ? `action-menu ${className}` : 'action-menu'} ref={ref} onKeyDown={event => {
     if (event.key === 'Escape' && event.currentTarget.open) {
       event.stopPropagation()
       event.currentTarget.open = false
@@ -22,10 +24,10 @@ export default function ActionMenu({ label, iconOnly, children }: {
     }
   }}>
     <summary className={iconOnly ? 'icon-button' : 'btn btn-sm'} aria-label={label} title={iconOnly ? label : undefined}>
-      {iconOnly ? <Ellipsis size={16} /> : <>{label}<ChevronDown size={13} /></>}
+      {trigger ?? (iconOnly ? <Ellipsis size={16} /> : <>{label}<ChevronDown size={13} /></>)}
     </summary>
     <div className="action-menu-items" onClick={event => {
-      if ((event.target as Element).closest('button:not(:disabled)') && ref.current) ref.current.open = false
+      if ((event.target as Element).closest('button:not(:disabled), a[href]') && ref.current) ref.current.open = false
     }}>{children}</div>
   </details>
 }

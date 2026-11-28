@@ -29,6 +29,7 @@ func presentationFixture() Config {
 }
 func TestPresentationPreservesNativeContentAndPortableSettings(t *testing.T) {
 	c := presentationFixture()
+	c.Views[0].Nodes[0].Layout = &Arrangement{PositionLocked: true}
 	raw, _ := json.Marshal(c)
 	config, err := Parse(raw)
 	if err != nil {
@@ -54,7 +55,7 @@ func TestPresentationPreservesNativeContentAndPortableSettings(t *testing.T) {
 	if strings.Contains(string(a), `data-model="tier"`) {
 		t.Fatal("annotation became a model element")
 	}
-	if !v.Boundaries[0].Layout.Locked || v.Boundaries[1].Layout.Pattern != "grid" {
+	if !v.Boundaries[0].Layout.Locked || v.Boundaries[1].Layout.Pattern != "grid" || !v.Nodes[0].Layout.PositionLocked {
 		t.Fatal("local settings lost")
 	}
 }

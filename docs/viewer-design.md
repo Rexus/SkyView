@@ -15,6 +15,45 @@ Tom Sawyer SysML v2 Viewer is SkyView's agreed reference for appearance and inte
 
 ## Visual direction
 
+SkyView's own identity uses a cyan hexagon around three model nodes. Use fine, right-angled
+connectors that reflect the workbench's diagram routing, rather than heavy diagonal strokes.
+The original [logo asset](../web/public/skyview.svg) is shared by the README, app header,
+loading and empty-workspace states, build-information panel and browser icon. The header uses
+the compact label **SysML v2 design tool**. The welcome and build-information areas show the
+full product description below; `BrandMark.tsx` owns the shared in-app wording and logo component.
+Its ink background and pale nodes keep the mark legible in
+both light and dark themes; surrounding text follows the selected theme. Keep the emblem's
+proportions and colours intact, with no additional tile, shadow or gradient behind it.
+The opening description is **An open-source graphical design tool for SysML v2**, supported by
+**Create, visualize, edit and validate system models in your browser.** Describe SkyView as a tool
+for working graphically on native SysML v2 models. Diagrams, requirements tables and source editing
+operate on the same model; native source owns meaning while saved views own selection and layout.
+Keep the wording formal, focused on that purpose and within the documented language-support limits.
+The README's logo, badges and welcoming opening take inspiration from
+[SysArx's introduction](https://github.com/CodeOOf/SysArx/tree/alpha) and the screenshot-led
+[eShopOnContainers front page](https://github.com/dotnet-architecture/eShopOnContainers/tree/b9aae670e6c8ef61cf30879446283fd8e56ebcf5).
+[bootc](https://github.com/bootc-dev/bootc) also informs the concise purpose, honest status and
+contributor entry points. Reference projects supply inspiration, not bundled artwork or claims
+about SkyView's maturity.
+Brand colours identify SkyView, while the project keyword palette continues to own model colours.
+
+The preferred interface direction is **Graphite Paper**: a clean drafting table with neutral surfaces,
+compact controls and restrained blue/cyan accents that belong with the SkyView name and emblem.
+Light mode uses a light top bar and a warm off-white canvas; orange is not the brand accent.
+The current preview baseline uses 3px control corners, 8px navigation padding and a 40px square grid.
+Dark mode should retain the drawing-table character with a neutral charcoal canvas and visible grid
+divisions. Explore the surface separation used in Blender, Maya and ZBrush: distinct tool panels,
+lighter model cards, clear edges and restrained selection accents. Keep the SkyView blue/cyan identity.
+Grid and requirements listings should explore an academic, LaTeX-like table treatment: serif headings
+and prose, aligned identifiers, generous row spacing and deliberate horizontal rules. Define table
+foregrounds and backgrounds together in each theme so cells and status text remain readable.
+Keep text and icons readable in filled controls through hover, pressed and focus states. Selected
+tabs, navigation entries and diagram elements need distinct hover feedback while retaining their
+selection marker; hover must not make the current selection disappear.
+Refine the remaining panel treatments against populated workspaces, menus and element properties,
+checking that dark model cards remain distinct from the working area.
+These choices are being explored in concept previews; they do not describe a completed app restyle.
+
 The reference uses a compact model tree and properties panel beside a large diagram canvas, with
 nested compartments, fine connectors and restrained colors. Its documented interaction includes
 selective expansion, tree/nested structures, automatic orthogonal layouts and sequence views. [1]
@@ -23,22 +62,52 @@ For SkyView, retain readable light/dark themes, a persistent project identity an
 Use model-kind labels, visible selection/focus, compact contextual controls and consistent role colors.
 Diagram opens first and remains the main work area. Choose the automatic layout or a saved view
 from one **Diagram view** picker. Both use the same glyphs, project language colours and compact
-viewport controls for selecting, panning, zooming and fitting. Model diagrams arrange and fit
+viewport controls for selecting, panning, zooming and fitting. **Escape** cancels an unfinished drag
+or connection, returns from Pan to Select, or clears the selection. Model diagrams arrange and fit
 when opened or when the scope or projection changes. Dragging stores manual positions for that
 scope and projection. Use **… → Restore saved positions** to revisit them. Saved views open
 with their saved geometry. **Auto layout** fits the arranged diagram to the available canvas.
+Drag a box near another box's edge or centre to align it. Matching gaps display paired spacing
+guides. Hold **Alt** while dragging to place a box freely.
+Automatic routing takes a clear straight path between facing sides, centred on the narrower
+face when it fits. Select a connector and drag its square handle between the boxes to move both
+attachments onto a straight path. Hold **Alt** to adjust only that segment. Arrow keys on the
+square handle make smaller adjustments. Drag a round handle to move one attachment. The arrow
+keys on a round handle select a side. Attachments and segments snap to nearby alignments with a
+guide. Hold **Alt** for free placement. Separate relationships leave space between arrowheads.
+Connections attached to a named port keep that port.
+With a connector selected, drag its label or focus the label and use the arrow keys. A dotted
+leader ties a moved label to its connector. Model diagrams remember label positions by scope and
+projection. In saved views, **Save views** also saves the label position and its leader appears in
+the SVG export.
+Model diagrams store the manual route with their positions. Choose **… → Restore saved positions
+and routes** to reuse that layout. In saved views, use **Save views** to publish route edits.
 A thin titled frame follows the
 canvas and identifies the displayed scope. Presentation boundaries inside the frame group selected
-elements. The left navigator holds **Projects**, **Elements** and **Settings**, with properties
-below. Put actions beside the selector they affect. Use **+** to add an item and **…** for settings
+elements. The left navigator holds **Projects**, **Elements** and **Settings**. Selecting a part
+or connector opens its properties over the right side of the view. Click the empty canvas or
+**Close properties** to clear the selection. **Dock properties** keeps the panel beside the view
+while an element is selected and gives it its own space. Put actions beside the selector they affect. Use **+** to add an item and **…** for settings
 and other actions. Reuse the same button, menu, tooltip and dialog behavior wherever these controls
 appear. The sidebar toggle sits where the navigator meets the view toolbar. When the sidebar is
 hidden, use the same button at the left edge of the view. **Ctrl+B** (**Cmd+B** on macOS) also
-toggles it, and SkyView remembers your choice. **Undo** and **Redo** sit beside the toggle. Expand a file in the project map
+toggles it, and SkyView remembers your choice. The sidebar slides in and out and respects the
+browser’s reduced-motion setting. The diagram toolbar groups **Undo**, **Redo**,
+**Save views** for saved views, and **Auto layout** beside the selector. Find **Layout properties**
+under **…**. The **Overview map** starts visible and remembers your choice for the browser tab session. Expand a file in the project map
 to find its packages and views. Choose **Grid**,
 **Requirements** or **Source** beside **Diagram** to work with the same model in the main area.
-**Split** puts source and the selected diagram side by side and links their selection for saved source.
-The editor provides an 80-column ruler and a clickable diagnostic overview beside the scrollbar.
+**Split** puts source and the selected diagram side by side. With an element selected in the diagram,
+**Source** and **Split** reveal and highlight its full declaration in the saved model. Moving the
+caret follows the enclosing element. Properties stay closed in Source until you open them from
+the editor toolbar. Use the arrows beside the line numbers to fold and expand nested blocks.
+The editor also provides an 80-column ruler and a clickable diagnostic overview beside the scrollbar.
+Yellow dots identify unsaved diagrams, source files, and settings in the tabs and project tree.
+Source also highlights lines with unsaved edits.
+**Search** opens the command palette. **Issues** lists the active model's diagnostics. Select an
+issue to open its line in Source. **Notices** links to the installed version's release notes or,
+for a development build, the release history. Future administrator announcements about
+maintenance or downtime belong to hosted multi-user deployments.
 
 Use **Documentation → Code** in the element inspector to edit Markdown and **Preview** to read
 the rendered draft. **Save** writes the Markdown back to native SysML documentation.

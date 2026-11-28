@@ -69,9 +69,14 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     await act(async () => pan.click())
     assert.equal(pan.getAttribute('aria-pressed'), 'true')
     assert.ok(host.querySelector('.diagram-canvas.pan-mode'))
-    await act(async () => host.querySelector('[aria-label="Select elements"]').click())
+    await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     assert.equal(pan.getAttribute('aria-pressed'), 'false')
-    await act(async () => host.querySelector('[aria-label="Settings for Zone"]').click())
+    {
+      const actions = host.querySelector('.diagram-toolbar .action-menu')
+      await act(async () => actions.querySelector('summary').click())
+      await click('Layout properties', actions)
+      await act(async () => host.querySelector('[data-view-key="zone"]').click())
+    }
     await act(async () => { const choice = [...host.querySelectorAll('label')].find(l => l.firstChild?.textContent === 'Arrangement').querySelector('select'); choice.value = 'grid'; choice.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
     await pause()
     assert.equal(lastPreview.views[0].boundaries[0].layout.pattern, 'grid')
@@ -89,8 +94,18 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     assert.equal(file.content, source)
     await act(async () => actions.addElement('existing')); await pause()
     assert.equal(lastPreview.views[0].nodes.length, 2, 'reuse is idempotent')
-    await click('View settings')
+    {
+      const actions = host.querySelector('.diagram-toolbar .action-menu')
+      await act(async () => actions.querySelector('summary').click())
+      await click('Layout properties', actions)
+      assert.equal(actions.open, false)
+    }
     assert.equal(host.querySelector('input[type="color"]'), null, 'workspace layout cannot override model colours')
+    await act(async () => {
+      const target = host.querySelector('[aria-label="Settings target"]')
+      target.value = ''
+      target.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    })
     await act(async () => {
       const arrangement = [...host.querySelectorAll('label')].find(label => label.firstChild?.textContent === 'Arrangement').querySelector('select')
       arrangement.value = 'horizontal'
@@ -104,7 +119,7 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     // Settings are movable UI, not an extra diagram category; a portal keeps drafts intact.
     await render(file, 'first', settingsHost)
     await pause()
-    assert.ok(settingsHost.querySelector('[aria-label="Presentation settings"]'))
+    assert.ok(settingsHost.querySelector('[aria-label="Layout properties"]'))
 
     dom.reconfigure({ url: 'http://localhost/?project=test&view=overview' })
     await render(file, 'deep-link'); await pause()
@@ -116,7 +131,16 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     // Exercise routing and the discard guard through the actual application.
     dom.reconfigure({ url: 'http://localhost/?project=test&file=Model.sysml&view=overview' })
     Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: dom.window.localStorage })
-    const partName = file.content.indexOf('existing')
+    const appSource = 'package Test {\n  part existing {\n    part inner;\n  }\n}'
+    const partName = appSource.indexOf('existing')
+    const partStart = appSource.indexOf('part existing')
+    const partEnd = appSource.indexOf('}') + 1
+    const innerStart = appSource.indexOf('part inner')
+    const declarations = {
+      pkg: { start: 0, end: appSource.length },
+      existing: { start: partStart, end: partEnd },
+      inner: { start: innerStart, end: appSource.indexOf(';') + 1 },
+    }
     const appConfig = structuredClone(config)
     appConfig.views[0].nodes[0].element = 'existing'
     appConfig.views.push(
@@ -133,19 +157,24 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
       { id: 'inner', name: 'Inner part', qname: 'Test::existing::inner', kind: 'part', parentId: 'existing' }].map(element => ({
       ...element, isDef: false, line: 1, col: 1, spans: { bodyOpen: -1, bodyClose: -1, name: element.id === 'existing' ? { start: partName, end: partName + 8 } : { start: 0, end: 0 },
         type: { start: 0, end: 0 },
-        decl: element.id === 'existing' ? { start: file.content.indexOf('part'), end: file.content.indexOf(';') + 1 } : { start: 0, end: 0 } },
+        decl: declarations[element.id] ?? { start: 0, end: 0 } },
     }))
-    const appFile = { ...file, diagnostics: [], model: { ...file.model, rootId: 'root', rootName: 'Model',
+    const appFile = { ...file, content: appSource, diagnostics: [], model: { ...file.model, rootId: 'root', rootName: 'Model',
       elements: appElements, diagnostics: [], imports: [] } }
     const otherFile = { ...appFile, name: 'Other.sysml', revision: 'source-other' }
     globalThis.fetch = async (input, options = {}) => {
       const url = new URL(input, location.href)
       const path = url.pathname
+      if (path === '/api/about') return Response.json({ mode: 'single-user', account: 'local', build: {
+        version: 'v0.2.0', tag: 'v0.2.0', official: true, repository: 'https://github.com/Rexus/SkyView',
+      } })
       if (path.endsWith('/views/preview') && options.method === 'POST') {
         lastPreview = JSON.parse(options.body)
         return Response.json(sceneFor(lastPreview, url.searchParams.get('view')))
       }
       if (path.endsWith('/Other.sysml/views')) return Response.json({ error: 'no shared views' }, { status: 404 })
+      if (path.endsWith('/view-draft') && options.method === 'PUT') return new Response(null, { status: 204, headers: { ETag: 'draft-one' } })
+      if (path.endsWith('/view-draft') && options.method === 'DELETE') return new Response(null, { status: 204 })
       if (path.endsWith('/views') && options.method === 'PUT') return Response.json(JSON.parse(options.body), { headers: { ETag: 'views-two' } })
       if (path.endsWith('/views')) return Response.json(appConfig, { headers: { ETag: 'views-one' } })
       if (path.endsWith('/validate')) return Response.json({ diagnostics: [] })
@@ -182,8 +211,15 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     assert.equal(tabStrip().querySelectorAll('.diagram-tab').length, 1)
     assert.ok(host.querySelector('.diagram-scope-frame'))
     assert.ok(host.querySelector('.topbar #active-workspace'))
-    assert.deepEqual([...host.querySelectorAll('.topbar .action-menu summary')].map(menu => menu.getAttribute('aria-label')),
-      ['Workspace actions'], 'the header only offers actions for the workspace')
+    assert.deepEqual([...host.querySelectorAll('.workspace-picker .action-menu summary')].map(menu => menu.getAttribute('aria-label')),
+      ['Workspace actions'], 'the workspace picker keeps its own actions')
+    const search = host.querySelector('.topbar [aria-label="Search"]')
+    const issues = search.nextElementSibling
+    assert.equal(issues?.querySelector('summary')?.getAttribute('aria-label'), 'Issues',
+      'model diagnostics sit immediately to the right of search')
+    assert.equal(issues?.nextElementSibling?.querySelector('summary')?.getAttribute('aria-label'), 'Notices',
+      'release notices have their own menu')
+    assert.equal(issues?.nextElementSibling?.querySelector('a')?.href, 'https://github.com/Rexus/SkyView/releases/tag/v0.2.0')
     assert.doesNotMatch(host.querySelector('.topbar').textContent, /Model\.sysml/)
     const modelMenu = host.querySelector('.project-tree [aria-label="Model actions"]')
     await act(async () => modelMenu.click())
@@ -196,13 +232,26 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     const sidebar = host.querySelector('#workbench-sidebar')
     const toggle = host.querySelector('#sidebar-toggle')
     const viewbar = host.querySelector('.viewbar')
-    assert.equal(viewbar.firstElementChild, toggle, 'the sidebar toggle starts the view toolbar')
-    assert.equal(toggle.nextElementSibling?.getAttribute('aria-label'), 'Edit history')
-    assert.equal(toggle.nextElementSibling?.nextElementSibling?.textContent.trim(), 'Diagram')
+    assert.ok(viewbar.firstElementChild === toggle, 'the sidebar toggle starts the view toolbar')
+    assert.equal(toggle.nextElementSibling?.textContent.trim(), 'Diagram')
+    assert.equal(viewbar.querySelector('[aria-label="Edit history"]'), null)
+    const splitCanvas = host.querySelector('.split-panes .diagram-canvas')
+    assert.equal(splitCanvas.querySelector('[aria-label="Edit history"]'), null)
+    const toolbar = host.querySelector('.split-panes .diagram-toolbar')
+    const commands = toolbar.querySelectorAll('.diagram-picker > button, .view-history > button, .diagram-commands > button, .diagram-commands > details > summary')
+    assert.deepEqual([...commands].map(button => button.getAttribute('aria-label')),
+      ['New saved view', 'Undo', 'Redo', 'Reset to last save', 'Save views', 'Auto layout', 'Diagram actions'])
+    assert.ok(toolbar.querySelector('[aria-label="Save views"]').disabled, 'clean saved views keep an inactive Save button')
+    const map = () => host.querySelector('.diagram-canvas [aria-label="Overview map"]')
+    assert.equal(map().getAttribute('aria-pressed'), 'true')
+    assert.ok(splitCanvas.querySelector('.react-flow__minimap'))
+    await click('Overview map', splitCanvas)
+    assert.equal(map().getAttribute('aria-pressed'), 'false')
+    assert.equal(splitCanvas.querySelector('.react-flow__minimap'), null)
     assert.equal(host.querySelector('.topbar #sidebar-toggle'), null)
     const code = host.querySelector('.cm-editor')
     await act(async () => toggle.click())
-    assert.equal(sidebar.hidden, true)
+    assert.equal(sidebar.hasAttribute('inert'), true)
     assert.equal(toggle.getAttribute('aria-expanded'), 'false')
     assert.equal(localStorage.getItem('skyview-sidebar-visible'), 'false')
     assert.ok(host.querySelector('#active-workspace'), 'the workspace picker stays in the header')
@@ -211,7 +260,7 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     })
     await act(async () => code.querySelector('.cm-content').dispatchEvent(shortcut))
     assert.equal(shortcut.defaultPrevented, true)
-    assert.equal(sidebar.hidden, false)
+    assert.equal(sidebar.hasAttribute('inert'), false)
     assert.equal(host.querySelector('.cm-editor'), code, 'reopening the sidebar preserves the editor')
     assert.equal(picker().value, 'view:overview')
     const separator = host.querySelector('[role="separator"]')
@@ -222,17 +271,46 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     await act(async () => box().dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true })))
     await pause()
     assert.equal(picker().value, 'view:logical', 'double-click follows the subject to its overview')
+    assert.equal(map().getAttribute('aria-pressed'), 'false', 'opening another diagram keeps the map hidden')
     assert.ok(host.querySelector('[data-native-id="inner"]'), 'the clicked route shows the subsystem’s own contents')
     assert.equal(diagramTab('Subsystem | Logical design').getAttribute('aria-current'), 'page')
     assert.ok(diagramTab('System Overall'), 'the previous diagram stays open')
     await act(async () => diagramTab('System Overall').click()); await pause()
+    await click('Diagram')
     await act(async () => box().click())
-    assert.equal(host.querySelector('.cm-linked-declaration')?.textContent, 'existing')
+    const properties = () => host.querySelectorAll('.inspector[aria-label="Element properties"]')
+    const highlighted = () => [...host.querySelectorAll('.cm-linked-declaration')].map(node => node.textContent).join('\n')
+    assert.equal(properties().length, 1)
+    await click('Source')
+    assert.equal(highlighted(), appSource.slice(partStart, partEnd), 'Source reveals the complete declaration')
+    assert.equal(properties().length, 0, 'the source pane starts with properties closed')
     const editor = EditorView.findFromDOM(host.querySelector('.cm-editor'))
+    assert.equal(editor.state.selection.main.head, partName)
+    await act(async () => editor.dispatch({ selection: { anchor: innerStart } }))
+    assert.equal(properties().length, 0, 'caret movement never opens the source inspector')
+    await click('Element properties')
+    assert.match(properties()[0].querySelector('h3').textContent, /Inner part/)
+    await act(async () => editor.dispatch({ selection: { anchor: partName } }))
+    assert.match(properties()[0].querySelector('h3').textContent, /Existing part/)
+    await click('Close properties')
+    await click('Split'); await pause()
+    assert.equal(properties().length, 0, 'entering Split after moving the source caret keeps properties closed')
+    const fold = () => host.querySelector('.cm-foldGutter [title="Fold line"]')
+    assert.ok(fold())
+    await act(async () => fold().click())
+    assert.equal(host.querySelectorAll('.cm-foldPlaceholder').length, 1)
+    await act(async () => box().click())
+    assert.equal(host.querySelectorAll('.cm-foldPlaceholder').length, 0, 'diagram selection reveals a folded declaration')
+    assert.equal(highlighted(), appSource.slice(partStart, partEnd))
+    await click('Close properties')
     await act(async () => editor.dispatch({ selection: { anchor: 0 } }))
     await act(async () => editor.dispatch({ selection: { anchor: partName } }))
     assert.ok(box().classList.contains('selected'))
+    assert.equal(properties().length, 0, 'caret movement in Split keeps the inspector closed')
     await act(async () => editor.dispatch({ changes: { from: editor.state.doc.length, insert: '\n// draft' } }))
+    assert.equal(host.querySelector('.source-editor .cm-unsaved-line')?.textContent, '// draft')
+    assert.ok(host.querySelector('.viewbar [aria-description="Unsaved source edits"] .unsaved-dot'))
+    assert.ok(host.querySelector('.project-file [aria-label="Unsaved source edits"].unsaved-dot'))
     await choose('model')
     assert.equal(tabStrip().querySelectorAll('.diagram-tab').length, 2, 'browsing does not add a third tab')
     assert.equal(host.querySelector('[role="dialog"]'), null)
@@ -245,6 +323,9 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     await choose('view:overview'); await pause()
     assert.match(editor.state.doc.toString(), /draft/)
     await click('Revert', host.querySelector('.source-toolbar'))
+    await pause()
+    assert.equal(host.querySelectorAll('.source-editor .cm-unsaved-line').length, 0)
+    assert.equal(host.querySelectorAll('.viewbar [aria-description="Unsaved source edits"]').length, 0)
     await click('Model elements')
     const requirement = [...host.querySelectorAll('.tree-row[draggable="true"]')].find(row => row.textContent.includes('Mission requirement'))
     assert.ok(requirement)
@@ -268,17 +349,32 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     await pause()
     assert.ok(lastPreview.views[0].nodes.some(node => node.element === 'REQ'))
     assert.ok(host.querySelector('[data-view-key="REQ"]'))
-    assert.equal(editor.state.doc.toString(), file.content)
-    const diagramActions = host.querySelector('.diagram-pane .diagram-toolbar .action-menu')
-    await act(async () => diagramActions.querySelector('summary').click())
-    assert.equal(diagramActions.open, true)
-    await click('Discard draft changes', diagramActions)
-    assert.equal(diagramActions.open, false)
+    assert.equal(editor.state.doc.toString(), appSource)
+    await click('Reset to last save')
+    await pause()
+    assert.ok(!lastPreview.views[0].nodes.some(node => node.element === 'REQ'))
+    await click('Undo')
+    await pause()
+    assert.ok(lastPreview.views[0].nodes.some(node => node.element === 'REQ'), 'Undo restores the reset view')
+    await click('Redo')
+    await pause()
+    assert.ok(!lastPreview.views[0].nodes.some(node => node.element === 'REQ'), 'Redo restores the saved view again')
+    await act(async () => diagramTab('Subsystem | Logical design').click()); await pause()
+    await act(async () => diagramTab('System Overall').click()); await pause()
+    await click('Undo'); await pause()
+    assert.ok(lastPreview.views[0].nodes.some(node => node.element === 'REQ'), 'Undo history survives switching to another saved diagram')
+    await click('Redo'); await pause()
+    assert.ok(!lastPreview.views[0].nodes.some(node => node.element === 'REQ'))
     await act(async () => toggle.click())
-    assert.equal(sidebar.hidden, true)
-    await click('View settings')
-    assert.equal(sidebar.hidden, false, 'a diagram settings action reveals its panel')
-    assert.ok(host.querySelector('.layout-settings-host [aria-label="Presentation settings"]'))
+    assert.equal(sidebar.hasAttribute('inert'), true)
+    {
+      const actions = host.querySelector('.diagram-toolbar .action-menu')
+      await act(async () => actions.querySelector('summary').click())
+      await click('Layout properties', actions)
+      assert.equal(actions.open, false)
+    }
+    assert.equal(sidebar.hasAttribute('inert'), false, 'a diagram settings action reveals its panel')
+    assert.ok(host.querySelector('.layout-settings-host [aria-label="Layout properties"]'))
     const arrangement = host.querySelector('.layout-settings-host [aria-label="Settings target"]').parentElement.parentElement
     const layout = [...arrangement.querySelectorAll('label')].find(label => label.firstChild?.textContent === 'Arrangement').querySelector('select')
     await act(async () => {
@@ -287,10 +383,17 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     })
     const dirty = name => diagramTab(name)?.getAttribute('aria-label').includes('unsaved changes')
     assert.equal(dirty('System Overall'), true)
+    assert.ok(diagramTab('System Overall').querySelector('.unsaved-dot'))
+    assert.ok(host.querySelector('.diagram-picker .unsaved-dot'))
     await act(async () => diagramTab('Subsystem | Logical design').click()); await pause()
     assert.equal(host.querySelector('[role="dialog"]'), null)
     assert.equal(dirty('System Overall'), true, 'opening a related diagram preserves the layout draft')
-    await click('View settings')
+    {
+      const actions = host.querySelector('.diagram-toolbar .action-menu')
+      await act(async () => actions.querySelector('summary').click())
+      await click('Layout properties', actions)
+      assert.equal(actions.open, false)
+    }
     const logicalArrangement = [...host.querySelectorAll('.layout-settings-host label')].find(label => label.firstChild?.textContent === 'Arrangement').querySelector('select')
     await act(async () => {
       logicalArrangement.value = 'vertical'
@@ -336,6 +439,7 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     await click('Grid')
     assert.ok(host.querySelector('.viewbar .tab.active').textContent.includes('Grid'))
     assert.ok(host.querySelector('table.grid'))
+    assert.ok(host.querySelector('.view-toolbar [aria-label="Edit history"]'))
     await click('Projects')
     assert.ok(host.querySelector('table.grid'), 'changing navigator panels keeps the main view')
     await click('Diagram')
@@ -344,8 +448,11 @@ test('One diagram picker exposes automatic and saved layouts and edits presentat
     await act(async () => toggle.click())
     await act(async () => root.render(createElement(App, { key: 'reopened' })))
     await pause()
-    assert.equal(host.querySelector('#workbench-sidebar').hidden, true, 'visibility is restored across app loads')
+    assert.equal(host.querySelector('#workbench-sidebar').hasAttribute('inert'), true, 'visibility is restored across app loads')
     assert.equal(host.querySelector('#sidebar-toggle').getAttribute('aria-label'), 'Show sidebar')
+    assert.equal(map().getAttribute('aria-pressed'), 'false', 'reopening the workbench keeps the tab session setting')
+    await click('Overview map')
+    assert.equal(map().getAttribute('aria-pressed'), 'true')
   } finally {
     const { act } = await import('react'); if (root) await act(async () => root.unmount())
     dom.window.close(); await rm(temp, { recursive: true, force: true })

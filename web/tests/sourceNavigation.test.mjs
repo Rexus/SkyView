@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { foldable } from '@codemirror/language'
+import { EditorState } from '@codemirror/state'
 import { declarationAt, sourceDeclarations } from '../src/sourceNavigation.ts'
+import { sysmlFolding, sysmlLanguage } from '../src/sourceLanguage.ts'
 
 test('linked declarations use the most specific UTF-8 span after CRLF normalization', () => {
   const content = "package 'Étude' {\r\n  part 'Cart 🚀' { attribute position; }\r\n}"
@@ -23,4 +26,28 @@ test('linked declarations use the most specific UTF-8 span after CRLF normalizat
   const cartName = declarations.find(item => item.id === 'cart').name
   assert.equal(normalized.slice(cartName.from, cartName.to), "'Cart 🚀'")
   assert.equal(declarationAt(declarations, normalized.length), null)
+})
+
+test('source folds match nested braces while ignoring comments and quoted text', () => {
+  const doc = [
+    "package 'Example {' {",
+    '  // }',
+    '  part component {',
+    '    doc /* {',
+    '      } } */',
+    `    attribute label = "{";`,
+    '  }',
+    '  part leaf;',
+    '}',
+    'part unfinished {',
+  ].join('\n')
+  const state = EditorState.create({ doc, extensions: [sysmlLanguage, sysmlFolding] })
+  const at = line => foldable(state, state.doc.line(line).from, state.doc.line(line).to)
+  assert.deepEqual(at(1), { from: state.doc.line(1).to, to: state.doc.line(9).from })
+  assert.deepEqual(at(3), { from: state.doc.line(3).to, to: state.doc.line(7).to - 1 })
+  for (const line of [2, 4, 6, 8, 10]) assert.equal(at(line), null)
+  const edited = state.update({ changes: { from: state.doc.length, insert: '\n  part newChild;\n}' } }).state
+  assert.deepEqual(foldable(edited, edited.doc.line(10).from, edited.doc.line(10).to), {
+    from: edited.doc.line(10).to, to: edited.doc.line(12).from,
+  })
 })
