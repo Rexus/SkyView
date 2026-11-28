@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>SkyView</title>
+  <desc>Three model nodes joined by fine, right-angled connectors inside a cyan hexagon.</desc>
+  <path d="M32 3 57 17.5v29L32 61 7 46.5v-29Z" fill="#102b40" stroke="#22c4e8" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M19 28v5h10v5M45 28v5H35v5" stroke="#f4fbff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M25 22h14" stroke="#22c4e8" stroke-width="1.5"/>
+  <rect x="13" y="16" width="12" height="12" rx="1.5" fill="#22c4e8"/>
+  <rect x="39" y="16" width="12" height="12" rx="1.5" fill="#22c4e8"/>
+  <rect x="26" y="38" width="12" height="12" rx="1.5" fill="#f4fbff"/>
+</svg>

@@ -68,6 +68,7 @@ import {
   safeImportName,
 } from './utils'
 import Header from './components/Header'
+import BrandMark from './components/BrandMark'
 import ActionMenu from './components/ActionMenu'
 import WorkbenchSidebar, { type NavigatorPanel, type SettingsPage } from './components/WorkbenchSidebar'
 import { useModelViews, type ModelViews } from './modelViews'
@@ -1187,11 +1188,9 @@ export default function App() {
           )}
 
           {loading && !file ? (
-            <div className="loading-screen">
-              <div className="loading-logo">
-                <Loader2 size={22} className="spin" />
-              </div>
-              <div>Loading the SysML workspace…</div>
+            <div className="loading-screen" role="status">
+              <BrandMark className="loading-logo" />
+              <div className="loading-message"><Loader2 size={14} className="spin" aria-hidden="true" /> Loading the SysML workspace…</div>
             </div>
           ) : !file ? (
             <div className="empty-state">

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { Diagnostic } from '../types'
 import { cx } from '../utils'
+import BrandMark from './BrandMark'
 
 interface Props {
   sidebarVisible: boolean
@@ -26,22 +27,6 @@ interface Props {
   onOpenPalette: () => void
   onOpenHelp: () => void
   onShowDiagnostics: () => void
-}
-
-function BrandMark() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M5.5 7.5h4.2M14.3 7.5h4.2M12 9.2v5.6M7 13h10"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <circle cx="5" cy="7.5" r="2" fill="currentColor" />
-      <circle cx="19" cy="7.5" r="2" fill="currentColor" />
-      <circle cx="12" cy="16.5" r="2" fill="currentColor" />
-    </svg>
-  )
 }
 
 export default function Header(props: Props) {
@@ -75,9 +60,7 @@ export default function Header(props: Props) {
         {sidebarVisible ? <PanelLeftClose size={16} aria-hidden="true" /> : <PanelLeftOpen size={16} aria-hidden="true" />}
       </button>
       <div className="brand">
-        <div className="brand-mark">
-          <BrandMark />
-        </div>
+        <BrandMark />
         <div className="brand-text">
           <span className="brand-name">SkyView</span>
           <span className="brand-sub">SysML v2 workbench</span>

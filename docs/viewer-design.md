@@ -15,6 +15,25 @@ Tom Sawyer SysML v2 Viewer is SkyView's agreed reference for appearance and inte
 
 ## Visual direction
 
+SkyView's own identity uses a cyan hexagon around three model nodes. Use fine, right-angled
+connectors that reflect the workbench's diagram routing, rather than heavy diagonal strokes.
+The original [logo asset](../web/public/skyview.svg) is shared by the README, app header,
+loading state and browser icon. Its ink background and pale nodes keep the mark legible in
+both light and dark themes; surrounding text follows the selected theme. Keep the emblem's
+proportions and colours intact, with no additional tile, shadow or gradient behind it.
+The opening description is **An open-source graphical design tool for SysML v2**, supported by
+**Create, visualize, edit and validate system models in your browser.** Describe SkyView as a tool
+for working graphically on native SysML v2 models. Diagrams, requirements tables and source editing
+operate on the same model; native source owns meaning while saved views own selection and layout.
+Keep the wording formal, focused on that purpose and within the documented language-support limits.
+The README's logo, badges and welcoming opening take inspiration from
+[SysArx's introduction](https://github.com/CodeOOf/SysArx/tree/alpha) and the screenshot-led
+[eShopOnContainers front page](https://github.com/dotnet-architecture/eShopOnContainers/tree/b9aae670e6c8ef61cf30879446283fd8e56ebcf5).
+[bootc](https://github.com/bootc-dev/bootc) also informs the concise purpose, honest status and
+contributor entry points. Reference projects supply inspiration, not bundled artwork or claims
+about SkyView's maturity.
+Brand colours identify SkyView, while the project keyword palette continues to own model colours.
+
 The reference uses a compact model tree and properties panel beside a large diagram canvas, with
 nested compartments, fine connectors and restrained colors. Its documented interaction includes
 selective expansion, tree/nested structures, automatic orthogonal layouts and sequence views. [1]

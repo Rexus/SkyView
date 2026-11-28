@@ -1,7 +1,5 @@
 :root[data-theme="light"] {
   --canvas-surface: #fcfdfe;
-  --brand-background: #e3edf5;
-  --brand-ink: #254c69;
   --scope-border: #91aab9;
   --scope-caption: #e9f0f4;
   --minimap-mask: #f0f4f8b8;
@@ -9,8 +7,6 @@
 
 :root[data-theme="dark"] {
   --canvas-surface: #0c1118;
-  --brand-background: #203449;
-  --brand-ink: #bcd9ee;
   --scope-border: #526d83;
   --scope-caption: #1c2a37;
   --minimap-mask: #111824b8;
@@ -35,8 +31,7 @@
 .topbar .sidebar-toggle { flex: 0 0 auto; }
 .topbar .sidebar-toggle::after { left: 0; transform: none; }
 .topbar .brand { min-width: 0; gap: 8px; }
-.brand-mark { width: 29px; height: 29px; border-radius: 5px; }
-.brand-mark svg { width: 17px; height: 17px; }
+.brand-mark { width: 32px; height: 32px; }
 .brand-name { font-size: 15px; }
 .brand-sub { font-size: 9px; letter-spacing: .055em; }
 .topbar-divider { margin: 0 2px; }
